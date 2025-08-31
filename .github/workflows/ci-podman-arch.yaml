@@ -46,6 +46,7 @@ jobs:
       
       - name: Install Podman + QEMU
         run: |
+          which apt-get
           sudo apt-get update
           sudo apt-get install --yes qemu-user-static binfmt-support podman
           if [ "${{ inputs.architecture }}" = "arm64" ]; then
@@ -54,25 +55,22 @@ jobs:
       
       - name: Docker Hub login
         run: |
-          echo "${{ secrets.REGISTRY_TOKEN }}" | podman login \
+          echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
       
       - name: Build and Publish Image
         run: |
+          git rev-parse --short HEAD
+          which git
+          pwd
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
           TAG="${TAG}${IMAGE_NAME}:build-${{ inputs.architecture }}"
-          # ARCH_IN=
-          # case "$ARCH_IN" in
-          #   amd64) PODMAN_ARCH="amd64" ;;
-          #   arm64|aarch64) PODMAN_ARCH="arm64" ;;
-          #   *) echo "Unsupported architecture: $ARCH_IN" >&2; exit 1 ;;
-          # esac
-          podman build \
+          /usr/bin/podman build \
             --arch "${{ inputs.architecture }}" \
             --build-arg-file ${{ inputs.args_file }} \
             --file ${{ inputs.containerfile }} \
             --no-cache \
             --tag "${TAG}" .
-          podman push "${TAG}"
-          which podman
+          /usr/bin/podman push "${TAG}"
+          
