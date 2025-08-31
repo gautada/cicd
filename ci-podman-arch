@@ -1,5 +1,5 @@
 ---
-name: ci-podman-image
+name: ci-podman-arch
 
 on:
   workflow_call:
