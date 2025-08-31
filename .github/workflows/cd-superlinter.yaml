@@ -1,12 +1,13 @@
 ---
-name: "Lint All Files"
+name: "Quality Check(super-linter)"
 
 on:
   push:
   workflow_call:
 
 jobs:
-  lint:
+  linter:
+    name: "Quality Check(superlinter)"
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout Repository"
