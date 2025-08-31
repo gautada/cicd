@@ -66,7 +66,7 @@ jobs:
       - name: Build ${{ inputs.architecture }} image
         run: |
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
-          TAG="${TAG}${IMAGE_NAME}:dev-${{ inputs.architecture }}"
+          TAG="${TAG}${IMAGE_NAME}:build-${{ inputs.architecture }}"
           export TAG
           podman build \
             --arch ${{ inputs.architecture }} \
