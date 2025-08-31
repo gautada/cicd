@@ -34,18 +34,18 @@ jobs:
             --password-stdin ${{ inputs.registry_name }}
             
       - name: Build and Publish Manifest(dev)
-        run: |
-          set -x
-          TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
-          TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
-          MANIFEST="${TAG}dev"
-          /usr/bin/podman manifest create "${MANIFEST}"
-          while IFS= read -r architecture; do
-            PART="${TAG}build-${architecture}-$(/usr/bin/git rev-parse --short HEAD)"
-            DEV="${TAG}dev-${architecture}"
-            /usr/bin/podman pull "${PART}"
-            /usr/bin/podman tag "${PART}" "${DEV}"
-            /usr/bin/podman push "${DEV}"
-            /usr/bin/podman manifest add ${MANIFEST}" "${DEV}"
-          done <<< "${{ inputs.architectures }}"
-          /usr/bin/podman manifest add ${MANIFEST}"
+          run: |
+            set -x
+            TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
+            TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
+            MANIFEST="${TAG}dev"
+            /usr/bin/podman manifest create "${MANIFEST}"
+            while IFS= read -r architecture; do
+             PART="${TAG}build-${architecture}-$(/usr/bin/git rev-parse --short HEAD)"
+             DEV="${TAG}dev-${architecture}"
+             /usr/bin/podman pull "${PART}"
+             /usr/bin/podman tag "${PART}" "${DEV}"
+             /usr/bin/podman push "${DEV}"
+             /usr/bin/podman manifest add ${MANIFEST}" "${DEV}"
+           done <<< "${{ inputs.architectures }}"
+           /usr/bin/podman manifest add ${MANIFEST}"
