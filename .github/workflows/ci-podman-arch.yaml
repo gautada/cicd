@@ -30,7 +30,7 @@ on:
         required: true
 
 jobs:
-  integrate:
+  ci:
     name: "Build & Publish Image(${{ inputs.architecture }}" 
     runs-on: ubuntu-latest
     steps:
