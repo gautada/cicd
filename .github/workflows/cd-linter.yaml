@@ -7,7 +7,7 @@ on:
 
 jobs:
   linter:
-    name: "Quality Check(superlinter)"
+    name: "Quality Check(super-linter)"
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout Repository"
