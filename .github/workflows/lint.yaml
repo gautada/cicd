@@ -1,8 +1,9 @@
 ---
-name: "Lint All files"
+name: "Lint All Files"
 
 on:
   push:
+  workflow_call:
 
 jobs:
   lint:
