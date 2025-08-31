@@ -48,7 +48,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes qemu-user-static binfmt-support podman
-          sudo update-binfmts --enable qemu-${{ inputs.architecture }}
+          if [ "${{ inputs.architecture }}" = "arm64" ]; then
+            sudo update-binfmts --enable qemu-aarch64 || true
+          fi
       
       - name: Docker Hub login
         run: |
@@ -60,14 +62,14 @@ jobs:
         run: |
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
           TAG="${TAG}${IMAGE_NAME}:build-${{ inputs.architecture }}"
-          ARCH_IN="${{ inputs.architecture }}"
-          case "$ARCH_IN" in
-            amd64) PODMAN_ARCH="amd64" ;;
-            arm64|aarch64) PODMAN_ARCH="arm64" ;;
-            *) echo "Unsupported architecture: $ARCH_IN" >&2; exit 1 ;;
-          esac
+          # ARCH_IN=
+          # case "$ARCH_IN" in
+          #   amd64) PODMAN_ARCH="amd64" ;;
+          #   arm64|aarch64) PODMAN_ARCH="arm64" ;;
+          #   *) echo "Unsupported architecture: $ARCH_IN" >&2; exit 1 ;;
+          # esac
           podman build \
-            --arch "${PODMAN_ARCH}" \
+            --arch "${{ inputs.architecture }}" \
             --build-arg-file ${{ inputs.args_file }} \
             --file ${{ inputs.containerfile }} \
             --no-cache \
