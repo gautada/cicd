@@ -46,12 +46,12 @@ jobs:
       
       - name: Install Podman + QEMU
         run: |
-          which apt-get
-          sudo apt-get update
-          sudo apt-get install --yes qemu-user-static binfmt-support podman
+          sudo /usr/bin/apt-get update
+          sudo /usr/bin/apt-get install --yes qemu-user-static binfmt-support podman
           if [ "${{ inputs.architecture }}" = "arm64" ]; then
             sudo update-binfmts --enable qemu-aarch64 || true
           fi
+          which update-binftms
       
       - name: Docker Hub login
         run: |
@@ -61,11 +61,8 @@ jobs:
       
       - name: Build and Publish Image
         run: |
-          git rev-parse --short HEAD
-          which git
-          pwd
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
-          TAG="${TAG}${IMAGE_NAME}:build-${{ inputs.architecture }}"
+          TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):build-${{ inputs.architecture }}-$(/usr/bin/git rev-parse --short HEAD)"
           /usr/bin/podman build \
             --arch "${{ inputs.architecture }}" \
             --build-arg-file ${{ inputs.args_file }} \
