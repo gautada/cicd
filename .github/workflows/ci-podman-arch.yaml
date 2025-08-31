@@ -23,7 +23,7 @@ on:
         type: string
         required: true
         default: "docker.io" 
-   secrets:
+    secrets:
       REGISTRY_USERNAME:
         required: true
       REGISTRY_TOKEN:
