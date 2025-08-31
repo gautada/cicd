@@ -1,0 +1,38 @@
+---
+name: ci-podman-dev
+
+on:
+  workflow_call:
+    inputs:
+      architectures:
+        description: "List of architectures"
+        type: string
+        required: true
+      registry_name:
+        description: "Registry to publish images"
+        type: string
+        required: false
+        default: "docker.io" 
+    secrets:
+      REGISTRY_USERNAME:
+        required: true
+      REGISTRY_TOKEN:
+        required: true
+
+jobs:
+  ci:
+    name: "Collect Manifest(dev)" 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Loop Images
+        run: |
+          while IFS= read -r architecture; do
+            echo "Processing ${architecture}"
+            TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
+            TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
+            TAG="${TAG}build-${architecture}-$(/usr/bin/git rev-parse --short HEAD)"
+          done <<< "${{ inputs.architectures }}"
+          
