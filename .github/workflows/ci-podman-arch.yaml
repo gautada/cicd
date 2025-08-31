@@ -31,7 +31,7 @@ on:
 
 jobs:
   ci:
-    name: "Build & Publish Image(${{ inputs.architecture }}" 
+    name: "Build & Publish Image(${{ inputs.architecture }})" 
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
