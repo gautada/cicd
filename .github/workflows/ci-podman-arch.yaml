@@ -31,18 +31,11 @@ on:
 
 jobs:
   integrate:
-    name: "CI - Build and Publish Image" 
+    name: "Build & Publish Image(${{ inputs.architecture }}" 
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-  
-      - name: Super-Linter
-        uses: super-linter/super-linter@v5
-        env:
-          VALIDATE_DOCKERFILE: true
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCKERFILE_FILE_NAME: ${{ inputs.containerfile }}
   
       - name: Export .args to GITHUB_ENV (if present)
         if: ${{ hashFiles(inputs.args_file) != '' }}
