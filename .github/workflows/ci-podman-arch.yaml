@@ -63,25 +63,15 @@ jobs:
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
       
-      - name: Build ${{ inputs.architecture }} image
+      - name: Build and Publish Image
         run: |
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
           TAG="${TAG}${IMAGE_NAME}:build-${{ inputs.architecture }}"
-          export TAG
           podman build \
             --arch ${{ inputs.architecture }} \
             --build-arg-file ${{ inputs.args_file }} \
             --file ${{ inputs.containerfile }} \
             --no-cache \
             --tag "${TAG}" .
-      
-      - name: Publish dev-${{ inputs.architecture }} image
-        run: |
-          # NAMESPACE="${{ secrets.REGISTRY_USERNAME }}/${{ secrets.REGISTRY_USERNAME }}"
-          # P_IMG="docker.io/${NAMESPACE}"
-          # for ARCH in amd64 aarch64; do
-          #   S_IMG="${{ inputs.image_name }}:${{ inputs.dev_tag }}-${ARCH}"
-          #   podman tag "$S_IMG" "$P_IMG/$S_IMG"
           podman push "${TAG}"
           which podman
-          # done
