@@ -41,7 +41,8 @@ jobs:
           MANIFEST="${TAG}dev"
           /usr/bin/podman manifest create "${MANIFEST}"
           while IFS= read -r architecture; do
-           PART="${TAG}build-${architecture}-$(/usr/bin/git rev-parse --short HEAD)"
+           PART="${TAG}build-${architecture}-"
+           PART="${PART}$(/usr/bin/git rev-parse --short HEAD)"
            DEV="${TAG}dev-${architecture}"
            /usr/bin/podman pull "${PART}"
            /usr/bin/podman tag "${PART}" "${DEV}"
