@@ -6,7 +6,7 @@ on:
     inputs:
       architecture:
         description "CPU Architecture for Build"
-        type: String
+        type: string
         required: true
       args_file:
         description: "Path to build-arg file"
