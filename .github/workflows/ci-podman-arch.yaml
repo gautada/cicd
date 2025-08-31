@@ -19,8 +19,8 @@ on:
         required: false
         default: "Containerfile"
       registry_name:
-        description "Registry to publish images"
-        type: String
+        description: "Registry to publish images"
+        type: string
         required: true
         default: "docker.io" 
    secrets:
