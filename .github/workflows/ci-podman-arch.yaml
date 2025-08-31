@@ -53,7 +53,7 @@ jobs:
           fi
           # wich update-binftms
       
-      - name: Docker Hub login
+      - name: Build and Publish Manifest(dev)
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
             --username "${{ secrets.REGISTRY_USERNAME }}" \
