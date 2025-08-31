@@ -51,7 +51,7 @@ jobs:
           if [ "${{ inputs.architecture }}" = "arm64" ]; then
             sudo update-binfmts --enable qemu-aarch64 || true
           fi
-          which update-binftms
+          # wich update-binftms
       
       - name: Docker Hub login
         run: |
