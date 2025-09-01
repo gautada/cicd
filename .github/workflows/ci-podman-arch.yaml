@@ -67,7 +67,7 @@ jobs:
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
           TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
           TAG="${TAG}build-${{ inputs.architecture }}-"
-          TAG="{TAG}$(/usr/bin/git rev-parse --short HEAD)"
+          TAG="${TAG}$(/usr/bin/git rev-parse --short HEAD)"
           /usr/bin/podman build \
             --arch "${{ inputs.architecture }}" \
             --build-arg-file ${{ inputs.args_file }} \
