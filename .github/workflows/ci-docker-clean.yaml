@@ -17,7 +17,7 @@ on:
 
 jobs:
   ci:
-    name: "Collect Manifest(dev)" 
+    name: "Fetch" 
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,13 +31,14 @@ jobs:
       - name: Fetch
         # yamllint disable rule:line-length
         run: |
-          set -Eeuo pipefail
-          REG=docker.io
-          IMAGE=gautada/alpine
+          # set -Eeuo pipefail
+          REG="docker.io"
+          IMAGE="gautada/alpine"
+          curl -fsSL "https://${REG}/v2/${IMAGE}/tags/list"
           # Get tags into an array (ShellCheck-friendly, avoids word-splitting)
-          mapfile -t tags < <(
-           curl -fsSL "https://${REG}/v2/${IMAGE}/tags/list" | jq -r '.tags[]'
-          )
-          printf 'Found %d tags\n' "${#tags[@]}"
+          # mapfile -t tags < <(
+          #  curl -fsSL "https://${REG}/v2/${IMAGE}/tags/list" | jq -r '.tags[]'
+          # )
+          # printf 'Found %d tags\n' "${#tags[@]}"
           
         # yamllint enable rule:line-length
