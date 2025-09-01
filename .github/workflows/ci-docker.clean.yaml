@@ -34,7 +34,7 @@ jobs:
           REG=docker.io
           IMAGE=gautada/alpine
           # 1) list tags (generic registry API)
-          TAGS=$(curl -fsSL "https://$REG/v2/$IMAGE/tags/list" | jq -r '.tags[]')  # may require Bearer auth
+          export TAGS=$(curl -fsSL "https://$REG/v2/$IMAGE/tags/list" | jq -r '.tags[]')  # may require Bearer auth
           echo "${TAGS}"
           # 2) per tag, inspect to get 
           # created/digest/size (no "last_updated" here)
