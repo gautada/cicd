@@ -29,15 +29,14 @@ jobs:
           IMAGE=gautada/alpine
           # 1) list tags (generic registry API)
           # may require Bearer auth
-          TAGS=$(curl -fsSL "https://$REG/v2/$IMAGE/tags/list" | jq -r '.tags[]')   
+          TAGS=$(curl -fsSL "https://$REG/v2/$IMAGE/tags/list" | jq -r '.tags[]')   # yamllint disable-line
           echo "$TAGS"
           # 2) per tag, inspect to get 
           # created/digest/size (no "last_updated" here)
           for tag in $TAGS; do
-            skopeo inspect "docker://$REG/$IMAGE:$t" --raw >/tmp/manifest.json
-            DIGEST=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Digest)
-            CREATED=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Created)
-            # SIZE=$(skopeo inspect "docker://$REG/$IMAGE:$t"
-            # | jq -r .Layers | jq '[.[].Size] | add')
+            skopeo inspect "docker://$REG/$IMAGE:$t" --raw >/tmp/manifest.json # yamllint disable-line
+            DIGEST=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Digest) # yamllint disable-line
+            CREATED=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Created) # yamllint disable-line
+            SIZE=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Layers | jq '[.[].Size] | add') # yamllint disable-line
             printf "%s\t%s\t%s\t%s\n" "$t" "$CREATED" "$DIGEST" "$SIZE"
           done
