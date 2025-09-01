@@ -47,6 +47,6 @@ jobs:
            /usr/bin/podman pull "${PART}"
            /usr/bin/podman tag "${PART}" "${DEV}"
            /usr/bin/podman push "${DEV}"
-           /usr/bin/podman manifest add ${MANIFEST}" "${DEV}"
+           /usr/bin/podman manifest add "${MANIFEST}" "${DEV}"
           done <<< "${{ inputs.architectures }}"
-          /usr/bin/podman manifest add ${MANIFEST}"
+          /usr/bin/podman manifest push "${MANIFEST}"
