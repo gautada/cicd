@@ -29,14 +29,18 @@ jobs:
           IMAGE=gautada/alpine
           # 1) list tags (generic registry API)
           # may require Bearer auth
+          # yamllint disable rule:line-length
           TAGS=$(curl -fsSL "https://$REG/v2/$IMAGE/tags/list" | jq -r '.tags[]')   # yamllint disable-line
+          # yamllint enable rule:line-length
           echo "$TAGS"
           # 2) per tag, inspect to get 
           # created/digest/size (no "last_updated" here)
           for tag in $TAGS; do
+            # yamllint disable rule:line-length
             skopeo inspect "docker://$REG/$IMAGE:$t" --raw >/tmp/manifest.json # yamllint disable-line
             DIGEST=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Digest) # yamllint disable-line
             CREATED=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Created) # yamllint disable-line
             SIZE=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Layers | jq '[.[].Size] | add') # yamllint disable-line
             printf "%s\t%s\t%s\t%s\n" "$t" "$CREATED" "$DIGEST" "$SIZE"
+            # yamllint enable rule:line-length
           done
