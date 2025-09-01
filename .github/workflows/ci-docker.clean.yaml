@@ -31,19 +31,13 @@ jobs:
       - name: Fetch
         # yamllint disable rule:line-length
         run: |
+          set -Eeuo pipefail
           REG=docker.io
           IMAGE=gautada/alpine
-          # 1) list tags (generic registry API)
-          TAGS=$(curl -fsSL "https://$REG/v2/$IMAGE/tags/list" | jq -r '.tags[]')  # may require Bearer auth
-          export TAGS
-          echo "${TAGS}"
-          # 2) per tag, inspect to get 
-          # created/digest/size (no "last_updated" here)
-          for tag in $TAGS; do
-            skopeo inspect "docker://$REG/$IMAGE:$t" --raw >/tmp/manifest.json 
-            DIGEST=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Digest) 
-            CREATED=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Created) 
-            SIZE=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Layers | jq '[.[].Size] | add')
-            printf "%s\t%s\t%s\t%s\n" "$t" "$CREATED" "$DIGEST" "$SIZE"
-          done
+          # Get tags into an array (ShellCheck-friendly, avoids word-splitting)
+          mapfile -t tags < <(
+           curl -fsSL "https://${REG}/v2/${IMAGE}/tags/list" | jq -r '.tags[]'
+          )
+          printf 'Found %d tags\n' "${#tags[@]}"
+          
         # yamllint enable rule:line-length
