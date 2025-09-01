@@ -43,4 +43,4 @@ jobs:
             SIZE=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Layers | jq '[.[].Size] | add')
             printf "%s\t%s\t%s\t%s\n" "$t" "$CREATED" "$DIGEST" "$SIZE"
           done
-          # yamllint enable rule:line-length
+        # yamllint enable rule:line-length
