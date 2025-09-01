@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch
+        # yamllint disable rule:line-length
         run: |
           REG=docker.io
           IMAGE=gautada/alpine
@@ -36,11 +37,10 @@ jobs:
           # 2) per tag, inspect to get 
           # created/digest/size (no "last_updated" here)
           for tag in $TAGS; do
-            # yamllint disable rule:line-length
-            skopeo inspect "docker://$REG/$IMAGE:$t" --raw >/tmp/manifest.json # yamllint disable-line
-            DIGEST=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Digest) # yamllint disable-line
-            CREATED=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Created) # yamllint disable-line
-            SIZE=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Layers | jq '[.[].Size] | add') # yamllint disable-line
+            skopeo inspect "docker://$REG/$IMAGE:$t" --raw >/tmp/manifest.json 
+            DIGEST=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Digest) 
+            CREATED=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Created) 
+            SIZE=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Layers | jq '[.[].Size] | add')
             printf "%s\t%s\t%s\t%s\n" "$t" "$CREATED" "$DIGEST" "$SIZE"
-            # yamllint enable rule:line-length
           done
+          # yamllint enable rule:line-length
