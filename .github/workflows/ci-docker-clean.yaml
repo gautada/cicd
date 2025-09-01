@@ -31,10 +31,13 @@ jobs:
       - name: Fetch
         # yamllint disable rule:line-length
         run: |
+          FOO="$(curl -fsSL https://hub.docker.com/v2/repositories/gautada/alpine/tags?page_size=100)"
+          echo "${FOO}"
+          which curl
           # set -Eeuo pipefail
-          REG="docker.io"
-          IMAGE="gautada/alpine"
-          curl -fsSL "https://${REG}/v2/${IMAGE}/tags/list"
+          # REG="docker.io"
+          # IMAGE="gautada/alpine"
+          # curl -fsSL "https://${REG}/v2/${IMAGE}/tags/list"
           # Get tags into an array (ShellCheck-friendly, avoids word-splitting)
           # mapfile -t tags < <(
           #  curl -fsSL "https://${REG}/v2/${IMAGE}/tags/list" | jq -r '.tags[]'
