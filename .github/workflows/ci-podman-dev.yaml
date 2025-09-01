@@ -34,6 +34,7 @@ jobs:
             --password-stdin ${{ inputs.registry_name }}
             
       - name: Build and Publish Manifest(dev)
+        # yamllint disable rule:line-length
         run: |
           set -x
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
@@ -54,3 +55,4 @@ jobs:
            /usr/bin/podman manifest add "${MANIFEST}" "${DEV}"
           done # <<< "${{ inputs.architectures }}"
           /usr/bin/podman manifest push "${MANIFEST}"
+        # yamllint enable rule:line-length
