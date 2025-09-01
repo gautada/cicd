@@ -41,7 +41,7 @@ jobs:
           MANIFEST="${TAG}dev"
           /usr/bin/podman manifest create "${MANIFEST}"
           # while IFS= read -r architecture; do
-          for architecture in $(echo '${{ inputs.architectures }}' | jq -r '.[]'); do
+          for architecture in $(echo '${{ inputs.architectures }}' | jq -r '.[]'); do # yamllint disable-line
            # echo "Process ${architecture}"
            PART="${TAG}build-${architecture}-"
            PART="${PART}$(/usr/bin/git rev-parse --short HEAD)"
