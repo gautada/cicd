@@ -1,1 +1,40 @@
 ---
+name: ci-docker-clean
+
+on:
+  workflow_call:
+    inputs:
+      registry_name:
+        description: "Registry to publish images"
+        type: string
+        required: false
+        default: "docker.io" 
+    secrets:
+      REGISTRY_USERNAME:
+        required: true
+      REGISTRY_TOKEN:
+        required: true
+
+jobs:
+  ci:
+    name: "Collect Manifest(dev)" 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch
+        run: |
+          REG=docker.io
+          IMAGE=gautada/alpine
+          # 1) list tags (generic registry API)
+          TAGS=$(curl -fsSL "https://$REG/v2/$IMAGE/tags/list" | jq -r '.tags[]')   # may require Bearer auth
+          echo "$TAGS"
+          # 2) per tag, inspect to get created/digest/size (no "last_updated" here)
+          for tag in $TAGS; do
+            skopeo inspect "docker://$REG/$IMAGE:$t" --raw >/tmp/manifest.json
+            DIGEST=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Digest)
+            CREATED=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Created)
+            SIZE=$(skopeo inspect "docker://$REG/$IMAGE:$t" | jq -r .Layers | jq '[.[].Size] | add')
+            printf "%s\t%s\t%s\t%s\n" "$t" "$CREATED" "$DIGEST" "$SIZE"
+          done
