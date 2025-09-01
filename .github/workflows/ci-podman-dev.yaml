@@ -40,8 +40,11 @@ jobs:
           TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
           MANIFEST="${TAG}dev"
           /usr/bin/podman manifest create "${MANIFEST}"
-          while IFS= read -r architecture; do
-           echo "Process ${architecture}"
+          # while IFS= read -r architecture; do
+          for architecture in $(echo '${{ inputs.architectures }}' | jq -r '.[]'); do
+            echo "Processing ${architecture}"
+          done
+           # echo "Process ${architecture}"
            # PART="${TAG}build-${architecture}-"
            # PART="${PART}$(/usr/bin/git rev-parse --short HEAD)"
            # DEV="${TAG}dev-${architecture}"
@@ -49,5 +52,5 @@ jobs:
            # /usr/bin/podman tag "${PART}" "${DEV}"
            # /usr/bin/podman push "${DEV}"
            # /usr/bin/podman manifest add "${MANIFEST}" "${DEV}"
-          done <<< "${{ inputs.architectures }}"
-          /usr/bin/podman manifest push "${MANIFEST}"
+          # done <<< "${{ inputs.architectures }}"
+          # /usr/bin/podman manifest push "${MANIFEST}"
