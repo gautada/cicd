@@ -1,0 +1,66 @@
+---
+name: cd-tag-latest
+# Tags the dev image to latest and __IMAGE_VERSION__
+
+on:
+  workflow_call:
+    inputs:
+      registry_name:
+        description: "Registry to publish images"
+        type: string
+        required: false
+        default: "docker.io"
+    secrets:
+      REGISTRY_USERNAME:
+        required: true
+      REGISTRY_TOKEN:
+        required: true
+
+jobs:
+  cd:
+    name: "Retag Image(dev->latest)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        uses: actions/checkout@v4
+
+      - name: Registry Login(${{ inputs.registry_name }})
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
+            --username "${{ secrets.REGISTRY_USERNAME }}" \
+            --password-stdin ${{ inputs.registry_name }}
+
+      - name: Pull the (dev)Image
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: |
+          set -x
+          TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
+          TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
+          MANIFEST="${TAG}dev"
+          /usr/bin/podman pull "${MANIFEST}"
+
+      - name: Test the (dev)Image
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: |
+          set -x
+          TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
+          TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
+          MANIFEST="${TAG}dev"
+          echo "TODO: TEST THE dev Image
+
+
+      - name: Tag the latest Image
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: |
+          set -x
+          TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
+          TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
+          DEV_MANIFEST="${TAG}dev"
+          LATEST_MANIFEST="${TAG}latest"
+          /usr/bin/podman tag "${DEV_MANIFEST}" "${LATEST_MANIFEST}"
+          VERSION_TAG="${TAG}$(grep '^IMAGE_VERSION=' .args | cut -d= -f2-)"
+          /usr/bin/podman tag "${DEV_MANIFEST}" "${VERSION_TAG}"
+          /usr/bin/podman push "${LATEST_MANIFEST}"
+          /usr/bin/podman push "${VERSION_TAG}"

@@ -1,5 +1,7 @@
 ---
 name: "Quality Check(super-linter)"
+# This is the reusable action to run the linter on the repo.
+# This works hand in hand with pre-commit
 
 on:
   push:

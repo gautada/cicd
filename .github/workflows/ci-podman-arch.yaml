@@ -1,5 +1,6 @@
 ---
 name: ci-podman-arch
+# Reusable GH action that builds a container for a specified arch
 
 on:
   workflow_call:
@@ -22,7 +23,7 @@ on:
         description: "Registry to publish images"
         type: string
         required: false
-        default: "docker.io" 
+        default: "docker.io"
     secrets:
       REGISTRY_USERNAME:
         required: true
@@ -31,19 +32,19 @@ on:
 
 jobs:
   ci:
-    name: "Build & Publish Image(${{ inputs.architecture }})" 
+    name: "Build & Publish Image(${{ inputs.architecture }})"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-  
+
       - name: Export .args to GITHUB_ENV (if present)
         if: ${{ hashFiles(inputs.args_file) != '' }}
         run: |
           while IFS='=' read -r key value; do
             echo "$key=$value" >> "$GITHUB_ENV"
           done < "${{ inputs.args_file }}"
-      
+
       - name: Install Podman + QEMU
         run: |
           sudo /usr/bin/apt-get update
@@ -55,13 +56,13 @@ jobs:
             sudo update-binfmts --enable qemu-aarch64 || true
           fi
           # wich update-binftms
-      
+
       - name: Build and Publish Manifest(dev)
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
-      
+
       - name: Build and Publish Image
         run: |
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
@@ -75,4 +76,3 @@ jobs:
             --no-cache \
             --tag "${TAG}" .
           /usr/bin/podman push "${TAG}"
-          

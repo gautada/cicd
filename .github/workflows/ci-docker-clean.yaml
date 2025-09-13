@@ -1,5 +1,6 @@
 ---
 name: ci-docker-clean
+# This action is ment to clean up all the old docker tags base on build #
 
 on:
   workflow_call:
@@ -8,7 +9,7 @@ on:
         description: "Registry to publish images"
         type: string
         required: false
-        default: "docker.io" 
+        default: "docker.io"
     secrets:
       REGISTRY_USERNAME:
         required: true
@@ -17,17 +18,17 @@ on:
 
 jobs:
   ci:
-    name: "Fetch" 
+    name: "Fetch"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq skopeo
-      
+          sudo apt-get install -y jq skope
+
       - name: Fetch
         # yamllint disable rule:line-length
         run: |
@@ -43,5 +44,4 @@ jobs:
           #  curl -fsSL "https://${REG}/v2/${IMAGE}/tags/list" | jq -r '.tags[]'
           # )
           # printf 'Found %d tags\n' "${#tags[@]}"
-          
         # yamllint enable rule:line-length

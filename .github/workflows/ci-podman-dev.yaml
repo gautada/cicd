@@ -1,5 +1,6 @@
 ---
 name: ci-podman-dev
+# Pulls together the manifest and pushes the dev tagged image to registry
 
 on:
   workflow_call:
@@ -12,7 +13,7 @@ on:
         description: "Registry to publish images"
         type: string
         required: false
-        default: "docker.io" 
+        default: "docker.io"
     secrets:
       REGISTRY_USERNAME:
         required: true
@@ -21,7 +22,7 @@ on:
 
 jobs:
   ci:
-    name: "Collect Manifest(dev)" 
+    name: "Collect Manifest(dev)"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,7 +33,7 @@ jobs:
           echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
-            
+
       - name: Build and Publish Manifest(dev)
         # yamllint disable rule:line-length
         run: |
