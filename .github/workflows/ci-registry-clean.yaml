@@ -1,0 +1,52 @@
+---
+name: ci-docker-clean
+# This action is ment to clean up all the old docker tags base on build #
+
+on:
+  workflow_call:
+    inputs:
+      registry_name:
+        description: "Registry to publish images"
+        type: string
+        required: false
+        default: "docker.io"
+    secrets:
+      REGISTRY_USERNAME:
+        required: true
+      REGISTRY_TOKEN:
+        required: true
+
+jobs:
+  ci:
+    name: "Fetch"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          # skope
+
+      - name: Fetch
+        # yamllint disable rule:line-length
+        run: |
+          TOKEN="$(curl -s -H "Content-Type: application/json" -X POST \
+           -d "{\"username\":\"$HUB_USER\",\"password\":\"$HUB_PASS\"}" \
+          https://hub.docker.com/v2/users/login/ | jq -r .token)"
+
+          while IFS= read -r TAG; do
+            # Verify the authentication; this is just for debugging
+            # curl -i -H "Authorization: JWT $TOKEN" \
+            # "https://hub.docker.com/v2/namespaces/$NS/repositories/$REPO/tags/$TAG/"
+
+            echo "Deleting: ${NS}/${REPO}:${TAG}"
+            curl -fsS -X DELETE -H "Authorization: JWT ${TOKEN}" \
+             "https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags/${TAG}/" \
+             -o /dev/null && echo "  ✔ deleted" || echo "  ✖ failed"
+          done < <(jq -r '(.results // .) |
+                  map(select((.name? // "") | test("^build-(?:amd64|arm64)-[[:xdigit:]]{7}$")) | .name) |
+                  .[]' <<< "$(curl -fsSL https://hub.docker.com/v2/repositories/gautada/alpine/tags)")
+        # yamllint enable rule:line-length
