@@ -33,9 +33,9 @@ jobs:
       - name: Fetch
         # yamllint disable rule:line-length
         run: |
-          TOKEN="$(curl -s -H "Content-Type: application/json" -X POST \
+          TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
            -d "{\"username\":\"$HUB_USER\",\"password\":\"$HUB_PASS\"}" \
-          https://hub.docker.com/v2/users/login/ | jq -r .token)"
+          https://hub.docker.com/v2/users/login/ | jq -r .token)
 
           while IFS= read -r TAG; do
             # Verify the authentication; this is just for debugging
