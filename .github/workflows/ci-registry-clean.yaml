@@ -30,23 +30,39 @@ jobs:
           sudo apt-get install -y jq
           # skope
 
-      - name: Fetch
+      - name: "Cleam Excess Tags"
         # yamllint disable rule:line-length
         run: |
-          TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
-           -d "{\"username\":\"$HUB_USER\",\"password\":\"$HUB_PASS\"}" \
-          https://hub.docker.com/v2/users/login/ | jq -r .token)
+          # Build JSON payload without crazy escaping
+          LOGIN_PAYLOAD="$(jq -nc --arg username "$HUB_USER" --arg password "$HUB_PASS" \
+           '{username:$username, password:$password}')"
 
-          while IFS= read -r TAG; do
-            # Verify the authentication; this is just for debugging
-            # curl -i -H "Authorization: JWT $TOKEN" \
-            # "https://hub.docker.com/v2/namespaces/$NS/repositories/$REPO/tags/$TAG/"
+          TOKEN="$(curl -sS -H 'Content-Type: application/json' -X POST \
+            -d "$LOGIN_PAYLOAD" https://hub.docker.com/v2/users/login/ | jq -r .token)"
 
-            echo "Deleting: ${NS}/${REPO}:${TAG}"
-            curl -fsS -X DELETE -H "Authorization: JWT ${TOKEN}" \
-             "https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags/${TAG}/" \
-             -o /dev/null && echo "  ✔ deleted" || echo "  ✖ failed"
-          done < <(jq -r '(.results // .) |
-                  map(select((.name? // "") | test("^build-(?:amd64|arm64)-[[:xdigit:]]{7}$")) | .name) |
-                  .[]' <<< "$(curl -fsSL https://hub.docker.com/v2/repositories/gautada/alpine/tags)")
+          # Pull tags (auth header helps with rate limits and private repos)
+          list_tags() {
+            local url="https://hub.docker.com/v2/namespaces/$NS/repositories/$REPO/tags?page_size=100"
+            while [ -n "$url" ] && [ "$url" != "null" ]; do
+              page="$(curl -sS -H "Authorization: JWT $TOKEN" "$url")"
+              echo "$page"
+              url="$(echo "$page" | jq -r '.next')"
+            done
+          }
+
+          delete_tags() {
+            echo "${1}" | while IFS= read -r TAG; do
+              echo "Deleting: ${NS}/${REPO}:${TAG}"
+              if curl -fsS -X DELETE -H "Authorization: JWT ${TOKEN}" \
+                      "https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags/${TAG}/" \
+                      -o /dev/null; then
+                echo "  ✔ deleted"
+              else
+                echo "  ✖ failed"
+              fi
+            done
+          }
+
+          filtered_tags="$(list_tags | jq -r '.results[]?.name | select(test("^build-(?:amd64|arm64)-[[:xdigit:]]{7}$"))')"
+          delete_tags "${filtered_tags}"
         # yamllint enable rule:line-length
