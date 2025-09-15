@@ -19,3 +19,4 @@ jobs:
         uses: super-linter/super-linter@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKERFILE_HADOLINT_FILE_NAME: .hadolint.yaml
