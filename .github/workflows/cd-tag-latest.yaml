@@ -48,7 +48,7 @@ jobs:
           TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
           TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
           MANIFEST="${TAG}dev"
-          echo "TODO: TEST THE dev Image
+          echo "TODO: TEST the dev Image"
 
 
       - name: Tag the latest Image
