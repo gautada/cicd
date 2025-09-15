@@ -45,9 +45,9 @@ jobs:
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: |
           set -x
-          TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
-          TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
-          MANIFEST="${TAG}dev"
+          # TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
+          # TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
+          # MANIFEST="${TAG}dev"
           echo "TODO: TEST the dev Image"
 
 
