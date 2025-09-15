@@ -34,7 +34,7 @@ jobs:
         # yamllint disable rule:line-length
         run: |
           # Build JSON payload without crazy escaping
-          LOGIN_PAYLOAD="$(jq -nc --arg username "$HUB_USER" --arg password "$HUB_PASS" \
+          LOGIN_PAYLOAD="$(jq -nc --arg username "${{ secrets.REGISTRY_USERNAME }}" --arg password "${{ secrets.REGISTRY_TOKEN }}" \
            '{username:$username, password:$password}')"
 
           TOKEN="$(curl -sS -H 'Content-Type: application/json' -X POST \
@@ -42,7 +42,7 @@ jobs:
 
           # Pull tags (auth header helps with rate limits and private repos)
           list_tags() {
-            local url="https://hub.docker.com/v2/namespaces/$NS/repositories/$REPO/tags?page_size=100"
+            local url="https://hub.docker.com/v2/namespaces/${{ secrets.REGISTRY_USERNAME }}/repositories/$(pwd | awk -F'/' '{print $NF}')/tags?page_size=100"
             while [ -n "$url" ] && [ "$url" != "null" ]; do
               page="$(curl -sS -H "Authorization: JWT $TOKEN" "$url")"
               echo "$page"
@@ -54,7 +54,7 @@ jobs:
             echo "${1}" | while IFS= read -r TAG; do
               echo "Deleting: ${NS}/${REPO}:${TAG}"
               if curl -fsS -X DELETE -H "Authorization: JWT ${TOKEN}" \
-                      "https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags/${TAG}/" \
+                      "https://hub.docker.com/v2/namespaces/${{ secrets.REGISTRY_USERNAME }}/repositories/$(pwd | awk -F'/' '{print $NF}')/tags/${TAG}/" \
                       -o /dev/null; then
                 echo "  ✔ deleted"
               else
