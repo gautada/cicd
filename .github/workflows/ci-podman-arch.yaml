@@ -24,6 +24,11 @@ on:
         type: string
         required: false
         default: "docker.io"
+      tag_build:
+        description: "Tag for build containers"
+        type: string
+        required: false
+        default: "build"
     secrets:
       REGISTRY_USERNAME:
         required: true
@@ -32,20 +37,20 @@ on:
 
 jobs:
   ci:
-    name: "Build & Publish Image(${{ inputs.architecture }})"
+    name: "Build & Push Image(${{ inputs.architecture }})"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Export .args to GITHUB_ENV (if present)
-        if: ${{ hashFiles(inputs.args_file) != '' }}
-        run: |
-          while IFS='=' read -r key value; do
-            echo "$key=$value" >> "$GITHUB_ENV"
-          done < "${{ inputs.args_file }}"
+      # - name: Export .args to GITHUB_ENV (if present)
+      #   if: ${{ hashFiles(inputs.args_file) != '' }}
+      #   run: |
+      #     while IFS='=' read -r key value; do
+      #       echo "$key=$value" >> "$GITHUB_ENV"
+      #     done < "${{ inputs.args_file }}"
 
-      - name: Install Podman + QEMU
+      - name: Install Tools
         run: |
           sudo /usr/bin/apt-get update
           sudo /usr/bin/apt-get install --yes \
@@ -57,22 +62,22 @@ jobs:
           fi
           # wich update-binftms
 
-      - name: Build and Publish Manifest(dev)
+      - name: Registry Login
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
 
-      - name: Build and Publish Image
+      - name: Build & Push Image
         run: |
-          TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
-          TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
-          TAG="${TAG}build-${{ inputs.architecture }}-"
-          TAG="${TAG}$(/usr/bin/git rev-parse --short HEAD)"
+          IMG="${{ inputs.registry_name }}"
+          IMG+="/${{ secrets.REGISTRY_USERNAME }}/"
+          IMG+="$(pwd | awk -F'/' '{print $NF}')"
+          IMG+=":build-${{ inputs.architecture }}"
+          export IMG="-$(/usr/bin/git rev-parse --short HEAD)"
           /usr/bin/podman build \
             --arch "${{ inputs.architecture }}" \
             --build-arg-file ${{ inputs.args_file }} \
             --file ${{ inputs.containerfile }} \
             --no-cache \
-            --tag "${TAG}" .
-          /usr/bin/podman push "${TAG}"
+            --tag "${IMG}" .
