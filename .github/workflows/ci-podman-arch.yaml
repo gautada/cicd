@@ -74,10 +74,11 @@ jobs:
           IMG+="/${{ secrets.REGISTRY_USERNAME }}/"
           IMG+="$(pwd | awk -F'/' '{print $NF}')"
           IMG+=":build-${{ inputs.architecture }}"
-          export IMG="-$(/usr/bin/git rev-parse --short HEAD)"
+          IMG+="-$(/usr/bin/git rev-parse --short HEAD)"
           /usr/bin/podman build \
             --arch "${{ inputs.architecture }}" \
             --build-arg-file ${{ inputs.args_file }} \
             --file ${{ inputs.containerfile }} \
             --no-cache \
             --tag "${IMG}" .
+          /usr/bin/podman push "${IMG}"
