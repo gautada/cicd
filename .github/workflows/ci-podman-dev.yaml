@@ -35,6 +35,9 @@ jobs:
     name: "Integrate Development"
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Registry Login
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
