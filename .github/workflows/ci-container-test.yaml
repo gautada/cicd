@@ -43,8 +43,9 @@ jobs:
         run: |
           # Need to somehow deal with volumes
           set -xe
-          /usr/bin/podman run --env-file .env --detach --name ${REPO} \
+          REPO="$(pwd | awk -F'/' '{print $NF}')"
+          /usr/bin/podman run --env-file .env --detach --name "${REPO}" \
                               --publish 8080:8080 --rm \
-                             docker.io/gautada/${REPO}:dev
-          /usr/bin/podman stop ${REPO}
+                             "docker.io/gautada/${REPO}:dev"
+          /usr/bin/podman stop "${REPO}"
           set +xe
