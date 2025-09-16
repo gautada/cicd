@@ -43,6 +43,7 @@ jobs:
         run: |
           # Need to somehow deal with volumes
           set -xe
+          touch .env
           REPO="$(pwd | awk -F'/' '{print $NF}')"
           /usr/bin/podman run --env-file .env --detach --name "${REPO}" \
                               --publish 8080:8080 --rm \
