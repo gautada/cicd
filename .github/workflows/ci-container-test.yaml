@@ -1,0 +1,44 @@
+---
+name: ci-registry-clean
+# This action is ment to clean up all the old docker tags base on build #
+
+on:
+  workflow_call:
+    inputs:
+      registry_name:
+        description: "Registry to publish images"
+        type: string
+        required: false
+        default: "docker.io"
+    secrets:
+      REGISTRY_USERNAME:
+        required: true
+      REGISTRY_TOKEN:
+        required: true
+
+jobs:
+  ci:
+    name: "Test Container"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Registry Login
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
+            --username "${{ secrets.REGISTRY_USERNAME }}" \
+            --password-stdin ${{ inputs.registry_name }}
+
+      - name: "Pull Container Image"
+        # yamllint disable rule:line-length
+        run: |
+          NS="${{ secrets.REGISTRY_USERNAME }}"
+          REPO="$(pwd | awk -F'/' '{print $NF}')"
+          IMG="${NS}/${REPO}:dev"
+          /usr/bin/podman pull "${IMG}"
+        # yamllint enable rule:line-length
+
+      - name: "Test Container"
+        run: |
+          echo "Testing!"

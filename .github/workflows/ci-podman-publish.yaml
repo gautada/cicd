@@ -1,5 +1,5 @@
 ---
-name: ci-podman-dev
+name: ci-podman-publish
 # Pulls together the manifest and pushes the dev tagged image to registry
 
 on:
@@ -32,7 +32,7 @@ on:
 
 jobs:
   ci:
-    name: "Integrate Development"
+    name: "Publish Development Images"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -44,7 +44,7 @@ jobs:
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
 
-      - name: Publish Container
+      - name: Publish Image
         # yamllint disable rule:line-length
         run: |
           set -x

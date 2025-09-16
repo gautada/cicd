@@ -1,5 +1,5 @@
 ---
-name: ci-podman-arch
+name: ci-podman-build
 # Reusable GH action that builds a container for a specified arch
 
 on:
@@ -37,7 +37,7 @@ on:
 
 jobs:
   ci:
-    name: "Build & Push Image(${{ inputs.architecture }})"
+    name: "Build & Push Image"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
