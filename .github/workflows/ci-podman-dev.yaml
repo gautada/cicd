@@ -51,7 +51,7 @@ jobs:
           CONTAINER+="$(pwd | awk -F'/' '{print $NF}')"
           MANIFEST="${CONTAINER}:${{ inputs.tag_dev }}}"
           /usr/bin/podman manifest create "${MANIFEST}"
-          for architecture in $(echo '${{ inputs.architectures }}' 
+          for architecture in $(echo '${{ inputs.architectures }}'
                                 | jq -r '.[]'); do
            BUILD="${CONTAINER}:${{ inputs.tag_build }}-${architecture}"
            PART="${CONTAINER}:${{ inputs.tag_build }}"
