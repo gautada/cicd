@@ -57,7 +57,7 @@ jobs:
           for architecture in $(echo '${{ inputs.architectures }}' | jq -r '.[]'); do
            PART="${CONTAINER}:${{ inputs.tag_build }}"
            PART+="-${architecture}"
-           PART+="${VERSION}"
+           PART+="-${VERSION}"
            BUILD="${CONTAINER}:${{ inputs.tag_build }}-${architecture}"
            /usr/bin/podman pull "${PART}"
            /usr/bin/podman tag "${PART}" "${BUILD}"
