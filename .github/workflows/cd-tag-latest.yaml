@@ -22,20 +22,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
         uses: actions/checkout@v4
 
       - name: Registry Login(${{ inputs.registry_name }})
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
 
       - name: Pull the (dev)Image
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: |
           set -x
+          /usr/bin/podman rmi --all --force
           CONTAINER="${{ inputs.registry_name }}"
           CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}"
           CONTAINER+="/$(pwd | awk -F'/' '{print $NF}')"
@@ -44,19 +42,16 @@ jobs:
           # /usr/bin/podman tag "${MANIFEST}-amd64" "${MANIFEST}-latest-amd64"
           /usr/bin/podman pull "${MANIFEST}-arm64"
           # /usr/bin/podman tag "${MANIFEST}-arm64" "${MANIFEST}-latest-arm64"
-          LATEST="${CONTAINER}:latest"
+          export LATEST="${CONTAINER}:latest"
           /usr/bin/podman manifest create "${LATEST}" \
                    "${MANIFEST}-amd64"  "${MANIFEST}-arm64"
           # /usr/bin/podman manifest add "${LATEST}" "${MANIFEST}-amd64"
           # /usr/bin/podman manifest add "${LATEST}" "${MANIFEST}-arm64"
-          VERSION="${CONTAINER}$(grep '^IMAGE_VERSION=' .args | cut -d= -f2-)"
+          export VERSION="${CONTAINER}$(grep \
+                     '^IMAGE_VERSION=' .args | cut -d= -f2-)"
           /usr/bin/podman tag "${LATEST}" "${VERSION}"
-          /usr/bin/podman manifest push "${LATEST}"
-          /usr/bin/podman manifest push "${VERSION}"
-
 
       - name: Test the (dev)Image
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: |
           set -x
           # TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
@@ -69,4 +64,5 @@ jobs:
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: |
           set -x
-          echo "Deploy"
+          /usr/bin/podman manifest push "${LATEST}"
+          /usr/bin/podman manifest push "${VERSION}"
