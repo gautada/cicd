@@ -38,7 +38,7 @@ jobs:
           set -x
           CONTAINER="${{ inputs.registry_name }}"
           CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}"
-          CONTAINER+="/$(pwd | awk -F'/' '{print $NF}'):"
+          CONTAINER+="/$(pwd | awk -F'/' '{print $NF}')"
           MANIFEST="${CONTAINER}:dev"
           /usr/bin/podman pull "${MANIFEST}-amd64"
           # /usr/bin/podman tag "${MANIFEST}-amd64" "${MANIFEST}-latest-amd64"
