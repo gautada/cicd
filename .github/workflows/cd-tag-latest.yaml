@@ -39,31 +39,19 @@ jobs:
           CONTAINER+="/$(pwd | awk -F'/' '{print $NF}')"
           MANIFEST="${CONTAINER}:build"
           /usr/bin/podman pull "${MANIFEST}-amd64"
-          # /usr/bin/podman tag "${MANIFEST}-amd64" "${MANIFEST}-latest-amd64"
           /usr/bin/podman pull "${MANIFEST}-arm64"
-          # /usr/bin/podman tag "${MANIFEST}-arm64" "${MANIFEST}-latest-arm64"
           LATEST="${CONTAINER}:latest"
-          export LATEST
           /usr/bin/podman manifest create "${LATEST}" \
-                   "${MANIFEST}-amd64"  "${MANIFEST}-arm64"
-          # /usr/bin/podman manifest add "${LATEST}" "${MANIFEST}-amd64"
-          # /usr/bin/podman manifest add "${LATEST}" "${MANIFEST}-arm64"
-          VERSION="${CONTAINER}$(grep '^IMAGE_VERSION=' .args | cut -d= -f2-)"
-          export VERSION
-          /usr/bin/podman tag "${LATEST}" "${VERSION}"
-
-      - name: Test the (dev)Image
-        run: |
-          set -x
-          # TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
-          # TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
-          # MANIFEST="${TAG}dev"
-          echo "TODO: TEST the dev Image"
-
+                   "${MANIFEST}-amd64" "${MANIFEST}-arm64"
 
       - name: Tag the latest Image
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: |
           set -x
-          /usr/bin/podman manifest push "${LATEST}"
+          CONTAINER="${{ inputs.registry_name }}"
+          CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}"
+          CONTAINER+="/$(pwd | awk -F'/' '{print $NF}')"
+          /usr/bin/podman manifest push "${CONTAINER}:latest"
+          VERSION="${CONTAINER}:$(grep '^IMAGE_VERSION=' .args | cut -d= -f2-)"
+          /usr/bin/podman tag "${CONTAINER}:latest" "${VERSION}"
           /usr/bin/podman manifest push "${VERSION}"
