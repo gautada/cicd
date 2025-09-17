@@ -36,18 +36,19 @@ jobs:
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: |
           set -x
-          TAG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/"
-          TAG="${TAG}$(pwd | awk -F'/' '{print $NF}'):"
-          MANIFEST="${TAG}dev"
-          /usr/bin/podman pull "${MANIFEST}" --arch amd64
-          /usr/bin/podman tag "${MANIFEST}" "${MANIFEST}-amd64"
-          /usr/bin/podman pull "${MANIFEST}" --arch arm64
-          /usr/bin/podman tag "${MANIFEST}" "${MANIFEST}-arm64"
-          LATEST="${TAG}latest"
+          CONTAINER="${{ inputs.registry_name }}"
+          CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}"
+          CONTAINER+="/$(pwd | awk -F'/' '{print $NF}'):"
+          MANIFEST="${CONTAINER}:dev"
+          /usr/bin/podman pull "${MANIFEST}-amd64"
+          # /usr/bin/podman tag "${MANIFEST}" "${MANIFEST}-amd64"
+          /usr/bin/podman pull "${MANIFEST}-arm64"
+          # /usr/bin/podman tag "${MANIFEST}" "${MANIFEST}-arm64"
+          LATEST="${CONTAINER}:latest"
           /usr/bin/podman manifest create "${LATEST}"
           /usr/bin/podman manifest add "${LATEST}" "${MANIFEST}-amd64"
           /usr/bin/podman manifest add "${LATEST}" "${MANIFEST}-arm64"
-          VERSION="${TAG}$(grep '^IMAGE_VERSION=' .args | cut -d= -f2-)"
+          VERSION="${CONTAINER}$(grep '^IMAGE_VERSION=' .args | cut -d= -f2-)"
           /usr/bin/podman tag "${LATEST}" "${VERSION}"
           /usr/bin/podman manifest push "${LATEST}"
           /usr/bin/podman manifest push "${VERSION}"
