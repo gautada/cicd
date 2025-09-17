@@ -42,13 +42,14 @@ jobs:
           # /usr/bin/podman tag "${MANIFEST}-amd64" "${MANIFEST}-latest-amd64"
           /usr/bin/podman pull "${MANIFEST}-arm64"
           # /usr/bin/podman tag "${MANIFEST}-arm64" "${MANIFEST}-latest-arm64"
-          export LATEST="${CONTAINER}:latest"
+          LATEST="${CONTAINER}:latest"
+          export LATEST
           /usr/bin/podman manifest create "${LATEST}" \
                    "${MANIFEST}-amd64"  "${MANIFEST}-arm64"
           # /usr/bin/podman manifest add "${LATEST}" "${MANIFEST}-amd64"
           # /usr/bin/podman manifest add "${LATEST}" "${MANIFEST}-arm64"
-          export VERSION="${CONTAINER}$(grep \
-                     '^IMAGE_VERSION=' .args | cut -d= -f2-)"
+          VERSION="${CONTAINER}$(grep '^IMAGE_VERSION=' .args | cut -d= -f2-)"
+          export VERSION
           /usr/bin/podman tag "${LATEST}" "${VERSION}"
 
       - name: Test the (dev)Image
