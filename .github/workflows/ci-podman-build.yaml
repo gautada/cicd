@@ -38,7 +38,10 @@ on:
 jobs:
   ci:
     name: "Build & Push Image"
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    # yamllint disable rule:line-length
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    # yamllint enable rule:line-length
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,13 +56,13 @@ jobs:
       - name: Install Tools
         run: |
           sudo /usr/bin/apt-get update
-          sudo /usr/bin/apt-get install --yes \
-            qemu-user-static \
-            binfmt-support \
-            podman
-          if [ "${{ inputs.architecture }}" = "arm64" ]; then
-            sudo update-binfmts --enable qemu-aarch64 || true
-          fi
+          sudo /usr/bin/apt-get install --yes podman
+            # qemu-user-static \
+            # binfmt-support \
+            # podman
+          # if [ "${{ inputs.architecture }}" = "arm64" ]; then
+          #   sudo update-binfmts --enable qemu-aarch64 || true
+          # fi
           # wich update-binftms
 
       - name: Registry Login
