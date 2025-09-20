@@ -1,0 +1,7 @@
+[sqlfluff]
+dialect = postgres
+# or: snowflake | bigquery | mysql | sqlite | tsql | redshift | hive | sparksql | duckdb | trino | databricks | ansi
+# templater = jinja           # optional (or dbt, if you use dbt)
+
+[sqlfluff:rules]
+# your rule tweaks...
