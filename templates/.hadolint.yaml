@@ -1,0 +1,4 @@
+---
+# Eliminates the need for SHELL command on `|`.
+ignored:
+  - DL4006
