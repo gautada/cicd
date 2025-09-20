@@ -32,3 +32,37 @@ repos:
         entry: yamllint
         language: python
         files: '\.ya?ml$'
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: "3.4.2"   # pin to a released tag
+    hooks:
+      - id: sqlfluff-lint
+        # args: ["--dialect", "postgres"]   # or set in .sqlfluff / pyproject
+        # Limit to SQL files (optional):
+        files: ".(sql|ddl|dml)$"
+        # If you use dbt templating, add the extras:
+        # additional_dependencies: ["dbt-bigquery==1.8.*",
+        # "sqlfluff-templater-dbt"]
+  - repo: local
+    hooks:
+      - id: jscpd
+        name: jscpd (duplicate code detector)
+        language: node
+        # Pin the version you want pre-commit to install:
+        additional_dependencies: ["jscpd@3.5.8"]
+        entry: jscpd
+        # Let pre-commit pass the staged files; jscpd will analyze just those.
+        pass_filenames: true
+        args:
+          # Tune these to your repo:
+          - --min-tokens
+          - "50"
+          - --min-lines
+          - "5"
+          - --threshold
+          - "2"                 # % duplication allowed before failing
+          - --reporters
+          - console
+          - --gitignore         # respect .gitignore
+          - --ignore
+          - "dist/**,build/**,**/*.min.*,**/*.generated.*"
+        stages: [pre-commit]         # or [push] if you prefer
