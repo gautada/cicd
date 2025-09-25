@@ -78,6 +78,7 @@ jobs:
           IMG+="$(pwd | awk -F'/' '{print $NF}')"
           IMG+=":build-${{ inputs.architecture }}"
           IMG+="-$(/usr/bin/git rev-parse --short HEAD)"
+          touch .args # Make sure we have the build-arg-file even if empty
           /usr/bin/podman build \
             --arch "${{ inputs.architecture }}" \
             --build-arg-file ${{ inputs.args_file }} \
