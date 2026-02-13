@@ -17,8 +17,11 @@ jobs:
     name: "Quality Check(super-linter)"
     runs-on: ubuntu-latest
     steps:
-      - name: "Checkout Repository"
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
 
       - name: "Run Super-Linter"
         uses: super-linter/super-linter@v6
