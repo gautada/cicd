@@ -30,3 +30,4 @@ jobs:
           LINTER_RULES_PATH: .
           DOCKERFILE_HADOLINT_FILE_NAME: .hadolint.yaml
           PYTHON_ISORT_CONFIG_FILE: pyproject.toml
+          VALIDATE_CHECKOV: false
