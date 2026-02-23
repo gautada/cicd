@@ -1,6 +1,15 @@
 ---
 name: cd-tag-latest
-# Tags the dev image to latest and __IMAGE_VERSION__
+# Reusable workflow that promotes the :dev image to :latest and tags it with
+# the authoritative container version.
+#
+# How it works:
+#   1. Pull the per-architecture build images (build-amd64, build-arm64)
+#   2. Assemble them into a multi-arch :latest manifest
+#   3. Retrieve the container version by running /usr/bin/container-version
+#      inside the amd64 build image (one-shot, no service startup required)
+#   4. Push :latest and the versioned tag (e.g. :12.9) to the registry
+#   5. Fully clean up the local podman environment
 
 on:
   workflow_call:
@@ -22,15 +31,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
+        # Check out the calling repository so pwd-derived image names resolve correctly
         uses: actions/checkout@v4
 
+      - name: Install Tools
+        # Install podman explicitly to ensure a consistent, known version is used.
+        # Matches the pattern established in ci-podman-build.yaml and ci-container-test.yaml.
+        run: |
+          sudo /usr/bin/apt-get update
+          sudo /usr/bin/apt-get install --yes podman
+
       - name: Registry Login(${{ inputs.registry_name }})
+        # Authenticate to the registry before pulling or pushing any images
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
 
       - name: Pull the (dev)Image
+        # Pull the per-architecture build images that were published by ci-podman-publish,
+        # then assemble them into a multi-arch :latest manifest locally.
+        # Starts with a full image purge to avoid stale layers from previous runs.
         run: |
           set -x
           /usr/bin/podman rmi --all --force
@@ -45,13 +66,48 @@ jobs:
                    "${MANIFEST}-amd64" "${MANIFEST}-arm64"
 
       - name: Tag the latest Image
+        # Only runs on a pull request targeting main (i.e. a production release).
+        #
+        # VERSION is obtained by running /usr/bin/container-version inside the
+        # amd64 build image rather than reading from a static .args file.
+        # This ensures the version reflects what is actually baked into the image.
+        #
+        # Design: --rm + --entrypoint override is used instead of detach+exec+trap
+        # because this is a one-shot read — no service startup is required.
+        # --rm auto-removes the container on exit; no separate cleanup step needed.
+        #
+        # After tagging, all local containers and images are purged to leave the
+        # runner in a clean state.
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        # yamllint disable rule:line-length
         run: |
-          set -x
           CONTAINER="${{ inputs.registry_name }}"
           CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}"
           CONTAINER+="/$(pwd | awk -F'/' '{print $NF}')"
+
+          # Run container-version inside the amd64 build image (already pulled).
+          # --entrypoint overrides s6-svscan so only container-version executes.
+          # --rm removes the container automatically when it exits.
+          VERSION=$(/usr/bin/podman run --rm \
+                      --entrypoint /usr/bin/container-version \
+                      "${CONTAINER}:build-amd64" | tr -d '[:space:]')
+
+          # Fail fast if container-version returned empty output
+          if [ -z "${VERSION}" ]; then
+            echo "ERROR: /usr/bin/container-version returned empty output"
+            exit 1
+          fi
+          echo "Container version: ${VERSION}"
+
+          # Push the multi-arch :latest manifest assembled in the Pull step
           /usr/bin/podman manifest push "${CONTAINER}:latest"
-          VERSION="${CONTAINER}:$(grep '^IMAGE_VERSION=' .args | cut -d= -f2-)"
-          /usr/bin/podman tag "${CONTAINER}:latest" "${VERSION}"
-          /usr/bin/podman manifest push "${VERSION}"
+
+          # Tag :latest with the version string and push the versioned manifest
+          VERSION_TAG="${CONTAINER}:${VERSION}"
+          /usr/bin/podman tag "${CONTAINER}:latest" "${VERSION_TAG}"
+          /usr/bin/podman manifest push "${VERSION_TAG}"
+
+          # Full cleanup: remove all local images and system resources
+          /usr/bin/podman rmi --all --force || true
+          /usr/bin/podman system prune --all --force || true
+        # yamllint enable rule:line-length
