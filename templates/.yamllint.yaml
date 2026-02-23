@@ -1,7 +1,104 @@
+# Yamllint Configuration
+# https://yamllint.readthedocs.io/
+#
+# This configuration works with:
+# - pre-commit (yamllint)
+# - GitHub Super-Linter
+# - VS Code YAML extension (with yamllint)
+#
+# Rule reference: https://yamllint.readthedocs.io/en/stable/rules.html
+#
+# ============================================================================
+# PRE-COMMIT SETUP
+# ============================================================================
+# Add the following to your .pre-commit-config.yaml:
+#
+#   - repo: https://github.com/adrienverge/yamllint
+#     rev: v1.35.1  # Use latest stable version
+#     hooks:
+#       - id: yamllint
+#         name: YAML Linter
+#         entry: yamllint
+#         language: python
+#         files: '\.ya?ml$'
+#
+# The hook will automatically detect .yamllint.yaml in the repo root.
+# To specify a custom config path, add args:
+#         args: ['--config-file', '.yamllint.yaml']
+#
+# ============================================================================
+# GITHUB SUPER-LINTER SETUP
+# ============================================================================
+# Super-Linter automatically detects .yamllint.yaml in the repo root.
+#
+# In your GitHub Actions workflow (.github/workflows/linter.yml):
+#
+#   - name: Super-Linter
+#     uses: super-linter/super-linter@v5
+#     env:
+#       VALIDATE_YAML: true
+#       # Optional: specify config path (default: .yamllint.yaml)
+#       YAML_CONFIG_FILE: .yamllint.yaml
+#
+# Supported config filenames (in order of precedence):
+#   - .yamllint.yaml
+#   - .yamllint.yml
+#   - .yamllint
+#
+# ============================================================================
+
 ---
 extends: default
 
 rules:
+  # Line length - relaxed to 120 for readability
+  # Allows longer lines in comments for documentation
   line-length:
-    max: 85
-    level: warning
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # Comments - require space after #, but relaxed spacing before
+  comments:
+    require-starting-space: true
+    ignore-shebangs: true
+    min-spaces-from-content: 1
+
+  # Comments indentation - disabled to allow flexible comment placement
+  comments-indentation: disable
+
+  # Truthy values - allow common variations (yes/no, on/off)
+  truthy:
+    allowed-values:
+      - 'true'
+      - 'false'
+      - 'yes'
+      - 'no'
+      - 'on'
+      - 'off'
+    check-keys: false
+
+  # Document start - don't require --- at start of file
+  document-start: disable
+
+  # Braces - allow inline for short mappings
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  # Brackets - allow inline for short sequences
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  # Indentation - standard 2-space indent
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Empty lines - allow up to 2 consecutive blank lines
+  empty-lines:
+    max: 2
+    max-start: 0
+    max-end: 1
