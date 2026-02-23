@@ -1,7 +1,7 @@
 ---
 repos:
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0  # Use the latest stable version
+    rev: v2.14.0  # Use the latest stable version
     hooks:
       - id: hadolint
         name: Hadolint Linter
@@ -9,15 +9,15 @@ repos:
         language: system
         files: 'Containerfile$'
   - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.10.0  # Use latest stable version
+    rev: v0.11.0  # Use latest stable version
     hooks:
       - id: shellcheck
         name: ShellCheck Linter
         entry: shellcheck
         language: system
-        files: '\.*sh$'  # Runs on all .sh files
+        files: '\.(sh|s6|zsh)$'  # Runs on all .sh, s6, and zsh files
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.35.0  # Use the latest stable version
+    rev: v0.47.0  # Use the latest stable version
     hooks:
       - id: markdownlint
         name: MarkdownLint
@@ -25,10 +25,100 @@ repos:
         language: node
         files: '\.md$'
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.32.0  # Use the latest stable version
+    rev: v1.38.0  # Use the latest stable version
     hooks:
       - id: yamllint
         name: YAML Linter
         entry: yamllint
         language: python
         files: '\.ya?ml$'
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: "4.0.0a3"   # pin to a released tag
+    hooks:
+      - id: sqlfluff-lint
+        # args: ["--dialect", "postgres"]   # or set in .sqlfluff / pyproject
+        # Limit to SQL files (optional):
+        files: ".(sql|ddl|dml)$"
+        # If you use dbt templating, add the extras:
+        # additional_dependencies: ["dbt-bigquery==1.8.*",
+        # "sqlfluff-templater-dbt"]
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        additional_dependencies:
+          - flake8-bugbear
+          - flake8-comprehensions
+  # - repo: https://github.com/pycqa/isort
+  #   rev: 5.13.2
+  #   hooks:
+  #     - id: isort
+  #       args:
+  #         - "--profile=black"
+  # - repo: https://github.com/psf/black
+  #   rev: 25.12.0   # pin a specific version
+  #   hooks:
+  #     - id: black
+  #       language_version: python3
+  - repo: https://github.com/standard/standard
+    rev: "v17.1.2"
+    hooks:
+      - id: standard
+        files: \.(js|cjs|mjs)$
+        args: ["--fix"]
+#   - repo: https://github.com/pre-commit/mirrors-htmlhint
+#     rev: v1.1.4
+#     hooks:
+#       - id: htmlhint
+#         files: \.(html|htm)$
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
+    rev: v1.1.2
+    hooks:
+      - id: htmlhint
+        args: [--config, .htmlhintrc]
+        files: \.(html|htm)$
+  # - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
+  #   rev: v1.1.2
+  #   hooks:
+  #     - id: stylelint
+  #       files: \.(css|scss|sass)$
+  - repo: https://github.com/thibaudcolas/pre-commit-stylelint
+    rev: v16.2.1   # pick the stylelint version you want
+    hooks:
+      - id: stylelint
+        files: \.(css|scss|sass)$
+        args: [--fix]
+        additional_dependencies:
+          - stylelint@16.2.1
+          - stylelint-config-standard@36.0.0
+  - repo: local
+    hooks:
+      - id: jscpd
+        name: jscpd (duplicate code detector)
+        language: node
+        # Pin the version you want pre-commit to install:
+        additional_dependencies: ["jscpd@3.5.8"]
+        entry: jscpd
+        # Let pre-commit pass the staged files; jscpd will analyze just those.
+        pass_filenames: true
+        args:
+          # Tune these to your repo:
+          - --min-tokens
+          - "50"
+          - --min-lines
+          - "5"
+          - --threshold
+          - "15"                 # % duplication allowed before failing
+          - --reporters
+          - console
+          - --gitignore         # respect .gitignore
+          - --ignore
+          - "dist/**,build/**,**/*.min.*,**/*.generated.*"
+        stages: [pre-commit]         # or [push] if you prefer
+  - repo: https://github.com/wemake-services/dotenv-linter
+    rev: 0.7.0        # use the latest release tag
+    hooks:
+      - id: dotenv-linter
+        # no -r here; pre-commit supplies the staged files
+        # optional: narrow scope with 'files' or 'exclude'
+        files: (^|/)\.env(\..*)?$
