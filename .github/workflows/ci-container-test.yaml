@@ -94,7 +94,7 @@ jobs:
           trap cleanup EXIT
 
           # Wait for s6 service supervisor to finish initialising container processes
-          sleep 30
+          sleep 5
 
           # Run the container test suite.
           # /usr/bin/container-test is a symlink to container-health, which
