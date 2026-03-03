@@ -9,8 +9,9 @@ name: ci-container-test
 #   3. Execute /usr/bin/container-test inside the running container
 #      - container-test is a symlink to container-health, which runs every
 #        script in /etc/container/health.d/ and returns 0 only if all pass
-#   4. Stop and remove the container regardless of test outcome (trap EXIT)
-#   5. Fail the workflow if container-test exited non-zero
+#   4. Capture logs if test fails
+#   5. Stop and remove the container regardless of test outcome (Cleanup Container step)
+#   6. Fail the workflow if container-test exited non-zero
 
 on:
   workflow_call:
@@ -63,15 +64,10 @@ jobs:
         # yamllint enable rule:line-length
 
       - name: "Test Container"
-        # Start the container, run its built-in test suite, then clean up.
+        # Start the container and run its built-in test suite.
         #
-        # Cleanup strategy: a bash trap on EXIT ensures podman stop + rm -f
-        # are called on every exit path (pass, fail, or signal).  The || true
-        # guards prevent a cleanup failure from masking the real test exit code.
-        #
-        # Why no --rm: using --rm with --detach would auto-remove the container
-        # on stop, but provides no guarantee of cleanup if the exec step fails
-        # before stop is reached.  Manual trap is more reliable.
+        # /usr/bin/container-test is a symlink to container-health, which
+        # iterates /etc/container/health.d/ and returns 0 only if all checks pass.
         run: |
           REPO="$(pwd | awk -F'/' '{print $NF}')"
           IMG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/${REPO}:dev"
@@ -86,17 +82,28 @@ jobs:
             --name "${REPO}" \
             "${IMG}"
 
-          # Register cleanup to run on any exit — pass, fail, or signal
-          cleanup() {
-            /usr/bin/podman stop "${REPO}" || true
-            /usr/bin/podman rm -f "${REPO}" || true
-          }
-          trap cleanup EXIT
-
           # Wait for s6 service supervisor to finish initialising container processes
           sleep 5
 
-          # Run the container test suite.
-          # /usr/bin/container-test is a symlink to container-health, which
-          # iterates /etc/container/health.d/ and returns 0 only if all checks pass.
+          # Execute the test suite
           /usr/bin/podman exec "${REPO}" /usr/bin/container-test
+
+      - name: "Capture Container Logs on Failure"
+        # If the preceding test fails, capture the logs from all running/stopped
+        # containers to the workflow console to assist in debugging.
+        if: failure()
+        run: |
+          for container in $(/usr/bin/podman ps -a --format "{{.Names}}"); do
+            echo "::group::Container Logs: ${container}"
+            /usr/bin/podman logs "${container}"
+            echo "::endgroup::"
+          done
+
+      - name: "Cleanup Container"
+        # Ensure the test container is stopped and removed regardless of outcome.
+        # This replaces the bash EXIT trap to allow log capture in preceding steps.
+        if: always()
+        run: |
+          REPO="$(pwd | awk -F'/' '{print $NF}')"
+          /usr/bin/podman stop "${REPO}" || true
+          /usr/bin/podman rm -f "${REPO}" || true
