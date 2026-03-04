@@ -1,4 +1,16 @@
 ---
-# Eliminates the need for SHELL command on `|`.
 ignored:
-  - DL4006
+  - DL4006  # Set the SHELL option -o pipefail before a RUN that uses a pipe.
+  - DL3008
+  - DL3013
+  #
+  # To fix manually add to Containerfile
+  # `SHELL ["/bin/bash", "-o", "pipefail", "-c"]`
+  #
+  # ```
+  # # hadolint ignore=DL4006
+  # RUN foo | bar
+  # ```
+  - DL3009  # Ignore apt install info about clearing cache
+  - DL3002  # Last user not root
+  - SC2115  # Shell check issue
