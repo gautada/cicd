@@ -1,19 +1,33 @@
 #!/usr/bin/env bash
 # =============================================================================
-# run-pre-commit.sh
+# bin/pre-commit
 # Syncs pre-commit config from gautada/cicd and runs pre-commit --all-files.
 #
-# Usage (curl-exec):
-#   curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/run-pre-commit.sh | bash
+# Usage:
+#   curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash
+#   curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --pull-only
+#
+# Options:
+#   --pull-only    Pull config files from gautada/cicd only; skip install and run.
 #
 # Requirements:
 #   - Run from the root of a git checkout
-#   - pre-commit must be installed (pipx install pre-commit)
+#   - pre-commit must be installed (pipx install --global pre-commit)
 #   - curl must be available
 # =============================================================================
 set -euo pipefail
 
 CICD_RAW="https://raw.githubusercontent.com/gautada/cicd/main/templates/pre-commit"
+PULL_ONLY=false
+
+# ---- Parse arguments --------------------------------------------------------
+
+for arg in "$@"; do
+  case "$arg" in
+    --pull-only) PULL_ONLY=true ;;
+    *) echo "ERROR: Unknown argument: $arg" >&2; exit 1 ;;
+  esac
+done
 
 # Config files to pull from gautada/cicd:/templates/pre-commit/
 CONFIG_FILES=(
@@ -25,6 +39,8 @@ CONFIG_FILES=(
   ".pre-commit-config.yaml"
   ".sqlfluff"
   ".yamllint.yaml"
+  "pyproject.toml"
+  "stylelint.config.cjs"
 )
 
 # ---- Preflight checks -------------------------------------------------------
@@ -39,13 +55,6 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 if [[ "$PWD" != "$REPO_ROOT" ]]; then
   echo "ERROR: Run from the root of the git checkout." >&2
   echo "       Expected: $REPO_ROOT" >&2
-  exit 1
-fi
-
-# Verify pre-commit is installed
-if ! command -v pre-commit &>/dev/null; then
-  echo "ERROR: pre-commit is not installed." >&2
-  echo "       Install via: pipx install pre-commit" >&2
   exit 1
 fi
 
@@ -67,7 +76,21 @@ for f in "${CONFIG_FILES[@]}"; do
 done
 echo ""
 
+# ---- Exit early if --pull-only ----------------------------------------------
+
+if [[ "$PULL_ONLY" == true ]]; then
+  echo "==> Pull complete. Skipping install and run (--pull-only)."
+  exit 0
+fi
+
 # ---- Install/update hooks ---------------------------------------------------
+
+# Verify pre-commit is installed
+if ! command -v pre-commit &>/dev/null; then
+  echo "ERROR: pre-commit is not installed." >&2
+  echo "       Install via: pipx install --global pre-commit" >&2
+  exit 1
+fi
 
 echo "==> Installing pre-commit hooks..."
 pre-commit install
