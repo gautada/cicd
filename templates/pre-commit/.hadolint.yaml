@@ -3,6 +3,7 @@ ignored:
   - DL4006  # Set the SHELL option -o pipefail before a RUN that uses a pipe.
   - DL3008
   - DL3013
+  - DL3016
   #
   # To fix manually add to Containerfile
   # `SHELL ["/bin/bash", "-o", "pipefail", "-c"]`
