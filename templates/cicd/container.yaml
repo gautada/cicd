@@ -3,7 +3,7 @@ name: "Continuous Integration: Build and Publish Multi-Architecture Container Im
 # This is the generic reusable template for building containers
 
 'on':
-  # workflow_dispatch: {}
+  workflow_dispatch: {}
   push:
     branches:
       - dev
