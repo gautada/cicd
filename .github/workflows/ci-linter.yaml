@@ -23,8 +23,9 @@ jobs:
           fetch-depth: 0
 
       - name: "Pull Linter Configs"
-        -- # Pull config files only — no install, no run
-curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --pull-only
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --pull-only
+
       - name: "Run Super-Linter"
         uses: super-linter/super-linter@v6
         env:
