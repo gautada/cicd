@@ -13,10 +13,10 @@ name: "Continuous Integration: Build and Publish Multi-Architecture Container Im
 
 jobs:
   check:
-    uses: gautada/cicd/templates/workflows/ci-linter.yaml@main
+    uses: gautada/.github/templates/workflows/ci-linter.yaml@main
   build-arm64:
     needs: check
-    uses: gautada/cicd/templates/workflows/ci-podman-build.yaml@main
+    uses: gautada/.github/templates/workflows/ci-podman-build.yaml@main
     with:
       architecture: "arm64"
     secrets:
@@ -24,7 +24,7 @@ jobs:
       REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
   build-amd64:
     needs: check
-    uses: gautada/cicd/templates/workflows/ci-podman-build.yaml@main
+    uses: gautada/.github/templates/workflows/ci-podman-build.yaml@main
     with:
       architecture: "amd64"
     secrets:
@@ -40,19 +40,19 @@ jobs:
       REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
   clean:
     needs: [publish]
-    uses: gautada/cicd/templates/workflows/ci-registry-clean.yaml@main
+    uses: gautada/.github/templates/workflows/ci-registry-clean.yaml@main
     secrets:
       REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
       REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
   test:
     needs: [clean]
-    uses: gautada/cicd/templates/workflows/ci-container-test.yaml@main
+    uses: gautada/.github/templates/workflows/ci-container-test.yaml@main
     secrets:
       REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
       REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
   release:
     needs: [test]
-    uses: gautada/cicd/templates/workflows/cd-tag-latest.yaml@main
+    uses: gautada/.github/templates/workflows/cd-tag-latest.yaml@main
     secrets:
       REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
       REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
