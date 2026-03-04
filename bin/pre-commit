@@ -39,8 +39,6 @@ CONFIG_FILES=(
   ".pre-commit-config.yaml"
   ".sqlfluff"
   ".yamllint.yaml"
-  "pyproject.toml"
-  "stylelint.config.cjs"
 )
 
 # ---- Preflight checks -------------------------------------------------------
