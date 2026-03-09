@@ -85,7 +85,7 @@ jobs:
           # Wait for s6 service supervisor to finish initialising container processes
           sleep 15
 
-          @ Log the started container for debugging purpose
+          # Log the started container for debugging purpose
           /usr/bin/podman logs --names "${REPO}"
 
           # Execute the test suite
