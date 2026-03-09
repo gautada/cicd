@@ -83,7 +83,10 @@ jobs:
             "${IMG}"
 
           # Wait for s6 service supervisor to finish initialising container processes
-          sleep 30
+          sleep 15
+
+          @ Log the started container for debugging purpose
+          /usr/bin/podman logs --names "${REPO}"
 
           # Execute the test suite
           /usr/bin/podman exec "${REPO}" /usr/bin/container-test
