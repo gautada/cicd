@@ -78,7 +78,8 @@ jobs:
         #
         # After tagging, all local containers and images are purged to leave the
         # runner in a clean state.
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        # if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        if: github.base_ref == 'main'
         # yamllint disable rule:line-length
         run: |
           CONTAINER="${{ inputs.registry_name }}"
