@@ -46,9 +46,9 @@ jobs:
           VALIDATE_BASH_EXEC: false
           VALIDATE_SHELL_SHFMT: false
           
-          BIOME_FORMAT: false
-          GITHUB_ACTIONS_ZIZMOR: false
-          JSON_PRETTIER: false
-          MARKDOWN_PRETTIER: false
-          TRIVY: false
-          YAML_PRETTIER: false
+          VALIDATE_BIOME_FORMAT: false
+          VALIDATE_GITHUB_ACTIONS_ZIZMOR: false
+          VALIDATE_JSON_PRETTIER: false
+          VALIDATE_MARKDOWN_PRETTIER: false
+          VALIDATE_TRIVY: false
+          VALIDATE_YAML_PRETTIER: false
