@@ -37,6 +37,7 @@ CONFIG_FILES=(
   ".jscpd.json"
   ".markdownlint.yaml"
   ".pre-commit-config.yaml"
+  ".shellcheckrc"
   ".sqlfluff"
   ".yamllint.yaml"
 )
