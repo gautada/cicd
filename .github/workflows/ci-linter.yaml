@@ -34,6 +34,7 @@ jobs:
           LINTER_RULES_PATH: .
           DOCKERFILE_HADOLINT_FILE_NAME: .hadolint.yaml
           # PYTHON_ISORT_CONFIG_FILE: pyproject.toml
+          FILTER_REGEX_EXCLUDE: '.*\.zsh$'
           VALIDATE_CHECKOV: false
           VALIDATE_JAVASCRIPT_PRETTIER: false
           VALIDATE_NATURAL_LANGUAGE: false
