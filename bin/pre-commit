@@ -63,6 +63,14 @@ if ! command -v curl &>/dev/null; then
   exit 1
 fi
 
+# ---- Enforce canonical .gitignore -------------------------------------------
+
+echo "==> Syncing canonical .gitignore template..."
+curl -sSfL \
+https://raw.githubusercontent.com/gautada/cicd/refs/heads/main/templates/gitignore/.gitignore \
+-o .gitignore
+echo ""
+
 # ---- Sync config files from gautada/cicd ------------------------------------
 
 echo "==> Syncing pre-commit config from gautada/cicd/templates/pre-commit..."
