@@ -81,6 +81,7 @@ jobs:
           touch .args # Make sure we have the build-arg-file even if empty
           /usr/bin/podman build \
             --arch "${{ inputs.architecture }}" \
+            --ulimit nofile=65536:65536 \
             --build-arg-file ${{ inputs.args_file }} \
             --file ${{ inputs.containerfile }} \
             --no-cache \
