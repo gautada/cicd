@@ -78,7 +78,14 @@ jobs:
           IMG+="$(pwd | awk -F'/' '{print $NF}')"
           IMG+=":build-${{ inputs.architecture }}"
           IMG+="-$(/usr/bin/git rev-parse --short HEAD)"
-          touch .args # Make sure we have the build-arg-file even if empty
+          # Ensure build-arg file exists and carries the current commit signature
+          touch ${{ inputs.args_file }}
+          TMP_ARGS=$(mktemp)
+          if [ -s "${{ inputs.args_file }}" ]; then
+            /usr/bin/grep -v '^GIT_COMMIT=' "${{ inputs.args_file }}" > "${TMP_ARGS}" || true
+          fi
+          /usr/bin/mv "${TMP_ARGS}" "${{ inputs.args_file }}"
+          echo "GIT_COMMIT=$(/usr/bin/git rev-parse --short HEAD)" >> "${{ inputs.args_file }}"
           /usr/bin/podman build \
             --arch "${{ inputs.architecture }}" \
             --ulimit nofile=65536:65536 \
