@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck shell=bash
 # =============================================================================
 # bin/pre-commit
 # Syncs pre-commit config from gautada/cicd and runs pre-commit --all-files.

@@ -7,10 +7,10 @@ on:
   push:
   workflow_call:
 
-# permissions:
-#   contents: read
-#   checks: write
-#   statuses: write
+permissions:
+  contents: read
+  checks: write
+  statuses: write
 
 jobs:
   linter:
@@ -47,11 +47,12 @@ jobs:
           VALIDATE_PYTHON_MYPY: false
           VALIDATE_BASH_EXEC: false
           VALIDATE_SHELL_SHFMT: false
-          
+
           VALIDATE_BIOME_FORMAT: false # JavaScript/TypeScript projects
           VALIDATE_GITHUB_ACTIONS_ZIZMOR: false # GitHub Actions workflows
-          VALIDATE_JSON_PRETTIER: false 
+          VALIDATE_JSON_PRETTIER: false
           VALIDATE_SPELL_CODESPELL: false
           VALIDATE_MARKDOWN_PRETTIER: false
           VALIDATE_TRIVY: false
+          YAML_CONFIG_FILE: templates/pre-commit/.yamllint.yaml
           VALIDATE_YAML_PRETTIER: false
