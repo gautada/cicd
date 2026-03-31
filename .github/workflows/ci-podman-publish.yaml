@@ -44,11 +44,32 @@ jobs:
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
 
+      - name: Resolve version tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=""
+          if [ -f VERSION ]; then
+            version="$(tr -d ' \r\n' < VERSION)"
+          elif [ -x ./version.sh ]; then
+            version="$(./version.sh | head -n1 | tr -d ' \r\n')"
+          fi
+          if [ -z "$version" ]; then
+            version="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          fi
+          if [ -z "$version" ]; then
+            version="v$(git rev-parse --short HEAD)"
+          fi
+          version="$(printf '%s' "$version" | sed 's/[^A-Za-z0-9._-]/-/g')"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
       - name: Publish Image
         # yamllint disable rule:line-length
         run: |
           set -x
-          VERSION="$(/usr/bin/git rev-parse --short HEAD)"
+          VERSION_TAG="${{ steps.version.outputs.value }}"
+          GIT_VERSION="$(/usr/bin/git rev-parse --short HEAD)"
           CONTAINER="${{ inputs.registry_name }}"
           CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}/"
           CONTAINER+="$(pwd | awk -F'/' '{print $NF}')"
@@ -57,12 +78,17 @@ jobs:
           for architecture in $(echo '${{ inputs.architectures }}' | jq -r '.[]'); do
            PART="${CONTAINER}:${{ inputs.tag_build }}"
            PART+="-${architecture}"
-           PART+="-${VERSION}"
+           PART+="-${GIT_VERSION}"
            BUILD="${CONTAINER}:${{ inputs.tag_build }}-${architecture}"
            /usr/bin/podman pull "${PART}"
            /usr/bin/podman tag "${PART}" "${BUILD}"
            /usr/bin/podman push "${BUILD}"
            /usr/bin/podman manifest add "${MANIFEST}" "${BUILD}"
           done # <<< "${{ inputs.architectures }}"
-          /usr/bin/podman manifest push "${MANIFEST}"
+          DEV_DEST="docker://${CONTAINER}:${{ inputs.tag_dev }}"
+          /usr/bin/podman manifest push "${MANIFEST}" "${DEV_DEST}"
+          if [ -n "${VERSION_TAG}" ]; then
+            VERSION_DEST="docker://${CONTAINER}:${VERSION_TAG}"
+            /usr/bin/podman manifest push "${MANIFEST}" "${VERSION_DEST}"
+          fi
         # yamllint enable rule:line-length
