@@ -34,7 +34,7 @@ jobs:
     steps:
       - name: Checkout
         # Check out the calling repository so pwd-derived names resolve correctly
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Tools
         # Install podman for container lifecycle management.
@@ -83,7 +83,10 @@ jobs:
             "${IMG}"
 
           # Wait for s6 service supervisor to finish initialising container processes
-          sleep 5
+          sleep 15
+
+          # Log the started container for debugging purpose
+          /usr/bin/podman logs --names "${REPO}"
 
           # Execute the test suite
           /usr/bin/podman exec "${REPO}" /usr/bin/container-test

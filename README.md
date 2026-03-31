@@ -7,27 +7,50 @@ complex builds.
 
 Included are are configurations for the tools to execute linting on commit.
 
-### pre-commit
+### Linters
 
-#### Install
+The pre-commit configuration includes several linters that may require local installation:
 
-To install on the system for MacOS
+#### ShellCheck
+
+Required for linting shell scripts.
 
 ```zsh
-brew install pre-commit
+brew install shellcheck
 ```
 
-To install in the project. Copy the file `pre-commit.yaml`
+#### Hadolint
+
+Required for linting Dockerfiles/Containerfiles.
 
 ```zsh
-pre-commit install
+brew install hadolint
 ```
 
-#### Run
+#### SQLFluff
 
-`pre-commit` will run on all projects where installed when git commit `gc` is
-run. To run independently:
+Required for linting SQL files.
 
 ```zsh
-pre-commit run --all-files
+pip install sqlfluff
+```
+
+#### jscpd
+
+Required for detecting duplicate code.
+
+```zsh
+# Ensure Node.js is installed
+brew install node
+
+# Install jscpd globally or in the project
+npm install -g jscpd
+```
+
+## Template Syncing
+
+To sync the latest configurations to your project, use the provided sync script:
+
+```zsh
+# Coming soon...
 ```
