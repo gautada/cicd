@@ -1,17 +1,96 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# =============================================================================
+# .gitignore
+# =============================================================================
 
-# Virtual environments
-.venv
+# -----------------------------------------------------------------------------
+# Pre-commit configs (sourced at runtime from gautada/cicd — not tracked here)
+# -----------------------------------------------------------------------------
+.flake8
+.hadolint.yaml
+.htmlhintrc
+.jscpd.json
+.markdownlint.yaml
+.pre-commit-config.yaml
+.sqlfluff
+.yamllint.yaml
+# pyproject.toml
+# stylelint.config.cjs
 
-data
-
-# macOS system files
+# -----------------------------------------------------------------------------
+# OS
+# -----------------------------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
+# -----------------------------------------------------------------------------
+# Editor / IDE
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
 
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.tox/
+.venv/
+venv/
+env/
+.env
+.env.*
+pip-log.txt
+pip-delete-this-directory.txt
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# -----------------------------------------------------------------------------
+# Node
+# -----------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn/
+.pnp.*
+dist/
+.next/
+.nuxt/
+
+# -----------------------------------------------------------------------------
+# Containers
+# -----------------------------------------------------------------------------
+*.tar
+*.tar.gz
+
+# -----------------------------------------------------------------------------
+# Secrets / credentials
+# -----------------------------------------------------------------------------
+*.pem
+*.key
+*.cert
+*.p12
+.secrets
+secrets/

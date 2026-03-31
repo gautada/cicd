@@ -7,10 +7,10 @@ on:
   push:
   workflow_call:
 
-# permissions:
-#   contents: read
-#   checks: write
-#   statuses: write
+permissions:
+  contents: read
+  checks: write
+  statuses: write
 
 jobs:
   linter:
@@ -18,17 +18,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
+      - name: "Pull Linter Configs"
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --pull-only
 
       - name: "Run Super-Linter"
-        uses: super-linter/super-linter@v6
+        uses: super-linter/super-linter@v8
         env:
           OUTPUT_DETAILS: detailed
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LINTER_RULES_PATH: .
+          # VALIDATE_BASH: true
+          FILTER_REGEX_EXCLUDE: '.*\.zsh$'
           DOCKERFILE_HADOLINT_FILE_NAME: .hadolint.yaml
           # PYTHON_ISORT_CONFIG_FILE: pyproject.toml
           VALIDATE_CHECKOV: false
@@ -42,3 +47,12 @@ jobs:
           VALIDATE_PYTHON_MYPY: false
           VALIDATE_BASH_EXEC: false
           VALIDATE_SHELL_SHFMT: false
+
+          VALIDATE_BIOME_FORMAT: false # JavaScript/TypeScript projects
+          VALIDATE_GITHUB_ACTIONS_ZIZMOR: false # GitHub Actions workflows
+          VALIDATE_JSON_PRETTIER: false
+          VALIDATE_SPELL_CODESPELL: false
+          VALIDATE_MARKDOWN_PRETTIER: false
+          VALIDATE_TRIVY: false
+          YAML_CONFIG_FILE: templates/pre-commit/.yamllint.yaml
+          VALIDATE_YAML_PRETTIER: false
