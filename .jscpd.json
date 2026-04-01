@@ -1,3 +1,12 @@
 {
-  "threashold": 15
+  "threshold": 15,
+  "minTokens": 50,
+  "minLines": 5,
+  "reporters": ["console"],
+  "ignore": [
+    "dist/**",
+    "build/**",
+    "**/*.min.*",
+    "**/*.generated.*"
+  ]
 }
