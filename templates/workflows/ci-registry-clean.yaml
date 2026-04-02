@@ -1,6 +1,6 @@
 ---
 name: ci-docker-clean
-# This action is ment to clean up all the old docker tags base on build #
+# This action is meant to clean up old docker tags and unlinked build images.
 
 on:
   workflow_call:
@@ -10,6 +10,11 @@ on:
         type: string
         required: false
         default: "docker.io"
+      dry_run:
+        description: "If true, only log tags to be deleted without performing the deletion"
+        type: boolean
+        required: false
+        default: true
     secrets:
       REGISTRY_USERNAME:
         required: true
@@ -23,27 +28,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      #
-      # - name: Install tools
-      #   run: |
-      #     sudo apt-get update
-      #     sudo apt-get install -y jq
-      #     # skope
 
-      - name: "Clean Excess Tags"
+      - name: "Clean Excess and Unlinked Tags"
         # yamllint disable rule:line-length
         run: |
           NS="${{ secrets.REGISTRY_USERNAME }}"
-          REPO="$(pwd | awk -F'/' '{print $NF}')"
+          REPO="$(basename "$(pwd)")"
           _PASSWORD="${{ secrets.REGISTRY_TOKEN }}"
-          # Build JSON payload without crazy escaping
+          DRY_RUN="${{ inputs.dry_run }}"
+
+          # Authenticate with Docker Hub
           LOGIN_PAYLOAD="$(jq -nc --arg username "${NS}" --arg password "${_PASSWORD}" \
            '{username:$username, password:$password}')"
 
           TOKEN="$(curl -sS -H 'Content-Type: application/json' -X POST \
             -d "$LOGIN_PAYLOAD" https://hub.docker.com/v2/users/login/ | jq -r .token)"
 
-          # Pull tags (auth header helps with rate limits and private repos)
+          if [ "$TOKEN" = "null" ]; then
+            echo "ERROR: Failed to authenticate with Docker Hub." >&2
+            exit 1
+          fi
+
+          # Pull tags
           list_tags() {
             local url="https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags?page_size=100"
             while [ -n "$url" ] && [ "$url" != "null" ]; do
@@ -55,17 +61,36 @@ jobs:
 
           delete_tags() {
             echo "${1}" | while IFS= read -r TAG; do
-              echo "Deleting: ${NS}/${REPO}:${TAG}"
-              if curl -fsS -X DELETE -H "Authorization: JWT ${TOKEN}" \
-                      "https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags/${TAG}/" \
-                      -o /dev/null; then
-                echo "  ✔ deleted"
+              if [ -z "$TAG" ]; then continue; fi
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "[DRY RUN] Would delete: ${NS}/${REPO}:${TAG}"
               else
-                echo "  ✖ failed"
+                echo "Deleting: ${NS}/${REPO}:${TAG}"
+                if curl -fsS -X DELETE -H "Authorization: JWT ${TOKEN}" \
+                        "https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags/${TAG}/" \
+                        -o /dev/null; then
+                  echo "  ✔ deleted"
+                else
+                  echo "  ✖ failed"
+                fi
               fi
             done
           }
 
-          filtered_tags="$(list_tags | jq -r '.results[]?.name | select(test("^build-(?:amd64|arm64)-[[:xdigit:]]{7}$"))')"
-          delete_tags "${filtered_tags}"
+          ALL_JSON="$(list_tags)"
+
+          # Identify builds no longer referenced by any manifest (unlinked)
+          # We focus on the architecture-specific build tags: build-(amd64|arm64)-[hash]
+          BUILD_TAGS="$(echo "$ALL_JSON" | jq -r '.results[]?.name | select(test("^build-(?:amd64|arm64)-[[:xdigit:]]{7}$"))')"
+
+          echo "Processing tags for ${NS}/${REPO}..."
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Running in DRY RUN mode. No tags will be deleted."
+          fi
+
+          if [ -z "$BUILD_TAGS" ]; then
+            echo "No build tags found to clean."
+          else
+            delete_tags "${BUILD_TAGS}"
+          fi
         # yamllint enable rule:line-length
