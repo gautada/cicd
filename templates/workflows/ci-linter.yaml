@@ -1,5 +1,5 @@
 ---
-name: "Quality Check(super-linter)"
+name: "Quality Check (super-linter)"
 # This is the reusable action to run the linter on the repo.
 # This works hand in hand with pre-commit
 
@@ -7,38 +7,44 @@ on:
   push:
   workflow_call:
 
-# permissions:
-#   contents: read
-#   checks: write
-#   statuses: write
-
 jobs:
   linter:
-    name: "Quality Check(super-linter)"
+    name: "Quality Check (super-linter)"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      statuses: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-
       - name: "Run Super-Linter"
-        uses: super-linter/super-linter@v6
+        uses: super-linter/super-linter@v7
         env:
           OUTPUT_DETAILS: detailed
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LINTER_RULES_PATH: .
           DOCKERFILE_HADOLINT_FILE_NAME: .hadolint.yaml
           # PYTHON_ISORT_CONFIG_FILE: pyproject.toml
-          VALIDATE_CHECKOV: false
+          VALIDATE_ALL_CODEBASE: true
+          # Enable security tools
+          VALIDATE_TRIVY: true
+          VALIDATE_CHECKOV: true
+          VALIDATE_DOCKERFILE_HADOLINT: true
+          VALIDATE_GITLEAKS: true
+          VALIDATE_KUBERNETES_KUBECONFORM: true
+          # Disable others to match prior behavior or avoid noise
           VALIDATE_JAVASCRIPT_PRETTIER: false
           VALIDATE_NATURAL_LANGUAGE: false
-          # VALIDATE_PYTHON_RUFF: true
-          # VALIDATE_PYTHON_BLACK: true
           VALIDATE_PYTHON_FLAKE8: false
           VALIDATE_PYTHON_ISORT: false
           VALIDATE_PYTHON_PYLINT: false
           VALIDATE_PYTHON_MYPY: false
           VALIDATE_BASH_EXEC: false
           VALIDATE_SHELL_SHFMT: false
+          # Output SARIF for tools that support it
+          ENABLE_LINTER_OUTPUT: true
+          LINTER_OUTPUT_FORMAT: sarif
