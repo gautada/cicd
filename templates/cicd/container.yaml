@@ -14,6 +14,9 @@ name: "Continuous Integration: Build and Publish Multi-Architecture Container Im
 jobs:
   check:
     uses: gautada/cicd/.github/workflows/ci-linter.yaml@main
+  deep-scan:
+    needs: check
+    uses: gautada/cicd/.github/workflows/ci-deep-scan.yaml@main
   build-arm64:
     needs: check
     uses: gautada/cicd/.github/workflows/ci-podman-build.yaml@main
