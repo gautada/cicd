@@ -34,7 +34,7 @@ jobs:
     steps:
       - name: Checkout
         # Check out the calling repository so pwd-derived names resolve correctly
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Install Tools
         # Install podman for container lifecycle management.
