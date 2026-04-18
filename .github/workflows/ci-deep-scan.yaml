@@ -9,9 +9,6 @@ on:
         description: "Built image reference to scan (optional)"
         type: string
         required: false
-    secrets:
-      GITHUB_TOKEN:
-        required: false
 
 permissions:
   contents: read
