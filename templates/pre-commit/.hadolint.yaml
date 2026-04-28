@@ -2,3 +2,4 @@
 # Eliminates the need for SHELL command on `|`.
 ignored:
   - DL4006
+  - DL3008
