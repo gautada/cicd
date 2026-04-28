@@ -27,7 +27,7 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --pull-only
 
       - name: "Run Super-Linter"
-        uses: super-linter/super-linter@v9
+        uses: super-linter/super-linter@v8
         env:
           OUTPUT_DETAILS: detailed
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
