@@ -38,6 +38,7 @@ CONFIG_FILES=(
   ".jscpd.json"
   ".markdownlint.yaml"
   ".pre-commit-config.yaml"
+  "pyproject.toml"
   ".shellcheckrc"
   ".sqlfluff"
   ".yamllint.yaml"
