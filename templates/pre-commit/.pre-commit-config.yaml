@@ -1,5 +1,6 @@
 ---
 repos:
+  # ********************************** CONTAINERFILE
   - repo: https://github.com/hadolint/hadolint
     rev: v2.12.0  # Use the latest stable version
     hooks:
@@ -8,6 +9,8 @@ repos:
         entry: hadolint
         language: system
         files: 'Containerfile$'
+
+  # ********************************** SHELL SCRIPTS
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.10.0  # Use latest stable version
     hooks:
@@ -16,6 +19,16 @@ repos:
         entry: shellcheck
         language: system
         files: '\.*sh$'  # Runs on all .sh files
+
+  # ********************************** PYTHON
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+      
+  # ********************************** MARKDOWN
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.35.0  # Use the latest stable version
     hooks:
@@ -24,6 +37,8 @@ repos:
         entry: markdownlint
         language: node
         files: '\.md$'
+
+  #  ********************************** YAML
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.32.0  # Use the latest stable version
     hooks:
@@ -32,6 +47,8 @@ repos:
         entry: yamllint
         language: python
         files: '\.ya?ml$'
+
+  #  ********************************** SQL
   - repo: https://github.com/sqlfluff/sqlfluff
     rev: "3.4.2"   # pin to a released tag
     hooks:
@@ -42,6 +59,8 @@ repos:
         # If you use dbt templating, add the extras:
         # additional_dependencies: ["dbt-bigquery==1.8.*",
         # "sqlfluff-templater-dbt"]
+
+  # ********************************** JAVASCRIPT
   - repo: local
     hooks:
       - id: jscpd
@@ -66,6 +85,8 @@ repos:
           - --ignore
           - "dist/**,build/**,**/*.min.*,**/*.generated.*"
         stages: [pre-commit]         # or [push] if you prefer
+
+  # ********************************** ENVIRONMENT FILES
   - repo: https://github.com/wemake-services/dotenv-linter
     rev: 0.7.0        # use the latest release tag
     hooks:
