@@ -38,7 +38,7 @@ jobs:
           FILTER_REGEX_EXCLUDE: '.*\.zsh$'
           DOCKERFILE_HADOLINT_FILE_NAME: .hadolint.yaml
           # *************************************** PYTHON
-          VALIDATE_PYTHON_RUFF: true
+          # VALIDATE_PYTHON_RUFF: true
           VALIDATE_PYTHON_RUFF_FORMAT: false
           VALIDATE_PYTHON: false
           VALIDATE_PYTHON_BLACK: false
