@@ -11,6 +11,11 @@ name: "Continuous Integration: Build and Publish Multi-Architecture Container Im
     branches:
       - main
 
+permissions:
+  contents: read
+  checks: write
+  statuses: write
+  
 jobs:
   check:
     uses: gautada/cicd/.github/workflows/ci-linter.yaml@main
