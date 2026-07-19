@@ -42,6 +42,7 @@ CONFIG_FILES=(
   ".shellcheckrc"
   ".sqlfluff"
   ".yamllint.yaml"
+  "pyproject.toml"
 )
 
 # ---- Preflight checks -------------------------------------------------------
