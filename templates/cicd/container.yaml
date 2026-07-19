@@ -16,7 +16,7 @@ permissions:
   checks: write
   statuses: write
   security-events: write
-  
+
 jobs:
   check:
     uses: gautada/cicd/.github/workflows/ci-linter.yaml@main
