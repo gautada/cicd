@@ -65,6 +65,14 @@ if ! command -v curl &>/dev/null; then
   exit 1
 fi
 
+# ---- Enforce canonical .github/workflows/contaier.yaml -------------------------------------------
+
+echo "==> Syncing canonical .github/workflows/container template..."
+curl -sSfL \
+https://raw.githubusercontent.com/gautada/cicd/refs/heads/main/templates/cicd/container.yaml \
+-o .github/workflows/container.yaml
+echo ""
+
 # ---- Enforce canonical .gitignore -------------------------------------------
 
 echo "==> Syncing canonical .gitignore template..."
