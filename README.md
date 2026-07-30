@@ -3,15 +3,16 @@
 This repository provides reusable GitHub Actions workflows for linting,
 security scanning, building, testing, and publishing multi-architecture Podman
 images. It also provides an ephemeral pre-commit configuration and a consumer
-workflow template.
+workflow installer.
 
 The repository is also its own smallest consumer. `Containerfile` implements
 the built-in test and version commands, while `.github/workflows/container.yaml`
-calls the reusable workflows at `@dev`. Pull requests exercise secret-free
-lint, scan, and multi-architecture builds; pushes exercise the protected
-publish, test, and release path. Keep this container-only harness minimal.
-Future Go and Python combinations should use separate caller workflows or a
-documented matrix instead of adding language tooling to the baseline image.
+calls `cicd-container.yaml` at `@dev`. The installer copies that same canonical
+caller into consumer repositories and rewrites it to `@main`. Pull requests
+exercise secret-free lint, scan, and multi-architecture builds; pushes exercise
+the protected publish, test, and release path. Keep this container-only harness
+minimal. Future Go and Python combinations should use separate orchestrators or
+documented inputs instead of adding language tooling to the baseline image.
 
 The design keeps registry credentials away from pull-request code, validates
 changes before publishing, and requires a human-reviewed `dev` to `main`
@@ -40,6 +41,7 @@ must be valid OCI/Docker tag strings.
 
 | Workflow | Trigger | Purpose | Important inputs | Credentials |
 | --- | --- | --- | --- | --- |
+| `cicd-container.yaml` | `workflow_call` | Orchestrate the complete container lifecycle | architectures, `cicd_ref`, registry, promotion | Docker registry secrets |
 | `ci-linter.yaml` | `workflow_call` | Pull ephemeral lint rules and run Super Linter | `cicd_ref` | None |
 | `ci-deep-scan.yaml` | `workflow_call` | Semgrep SAST, SPDX SBOM, and Grype scan | `image_ref`, `fail_on_severity` | None for source/public images |
 | `ci-podman-build.yaml` | `workflow_call` | Build one architecture; optionally push a commit tag | architecture, paths, `publish` | Registry secrets only when publishing |
@@ -56,9 +58,15 @@ use Podman and can work with compatible registries.
 
 ### 1. Add the workflow
 
-Copy `templates/cicd/container.yaml` to
-`.github/workflows/container.yaml` in the consumer repository. The explicit
-sync command is:
+From the root of a consumer repository, the standard installer creates
+`.github/workflows/container.yaml` when it is missing and targets `cicd@main`:
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash
+```
+
+It preserves an existing workflow. To explicitly replace the workflow and
+`.gitignore`, use:
 
 ```bash
 curl -sSfL \
@@ -68,38 +76,46 @@ bash /tmp/gautada-cicd-pre-commit --pull-only --sync-project
 rm /tmp/gautada-cicd-pre-commit
 ```
 
-Review template updates before committing them. Existing consumers should not
+Review workflow updates before committing them. Existing consumers should not
 run `--sync-project` blindly because it intentionally replaces the consumer
 workflow and `.gitignore`.
 
-During development of this repository, change every reusable workflow suffix
-from `@main` to the test branch, such as `@ai`. Restore a stable tag or commit
-before production use. The linter also needs its configuration revision passed
-explicitly because reusable workflows cannot infer their own branch:
+The `--ref REF` option selects both the downloaded configuration revision and
+the literal orchestrator reference written into the consumer workflow. For
+example, `--ref dev` writes `@dev`; the default writes `@main`.
+
+To test an unreleased orchestrator from a consumer, change its single `@main`
+reference to the test branch and pass the same revision for lint configuration.
+GitHub requires the workflow reference to be literal; it cannot come from an
+environment variable or expression:
 
 ```yaml
-lint:
-  uses: gautada/cicd/.github/workflows/ci-linter.yaml@ai
+container:
+  uses: gautada/cicd/.github/workflows/cicd-container.yaml@ai
   with:
     cicd_ref: ai
+  secrets:
+    DOCKERIO_REGISTRY: ${{ secrets.DOCKERIO_REGISTRY }}
+    DOCKERIO_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
 ```
 
 Pinning consumers to a reviewed commit SHA gives the strongest protection
 against upstream workflow changes.
 
-### 2. Configure the GitHub Environment
+### 2. Configure registry credentials
 
-Create an Environment named `container-registry` and add:
+The standard caller inherits these repository or organization Actions secrets:
 
 | Secret | Required | Meaning |
 | --- | --- | --- |
-| `REGISTRY_USERNAME` | Yes | Registry namespace/login, currently the Docker Hub username |
-| `REGISTRY_TOKEN` | Yes | Least-privilege registry access token; never use an account password |
+| `DOCKERIO_REGISTRY` | Yes | Registry namespace/login, currently the Docker Hub username |
+| `DOCKERIO_TOKEN` | Yes | Least-privilege registry access token; never use an account password |
 
-The reusable jobs reference this Environment themselves. This is necessary
-because Environment secrets cannot be mapped through a caller job in the same
-way as repository secrets. Missing values fail in the first inexpensive step
-and their values are never printed.
+The orchestrator maps them to the generic `REGISTRY_USERNAME` and
+`REGISTRY_TOKEN` interface used by registry jobs. Alternatively, an Environment
+named `container-registry` may define those generic names; GitHub Environment
+secrets take precedence in the nested jobs. Missing values fail in the first
+inexpensive step and their values are never printed.
 
 Recommended Environment policy:
 
@@ -199,7 +215,7 @@ dry-run list has been reviewed.
 
 When `image_ref` is supplied, Grype scans that image instead of the filesystem.
 The image must be public or already accessible without adding registry secrets
-to this workflow. The standard template scans source before images exist;
+to this workflow. The standard container pipeline scans source before images exist;
 scanning a private built image should be a separate protected post-build job.
 
 SARIF is uploaded to GitHub code scanning when token permissions permit it.
@@ -258,11 +274,10 @@ lists them. Always inspect `git status` before committing.
 
 ## Migration checklist
 
-- Replace the old consumer `container.yaml` with the new template.
-- Remove old `DOCKERIO_REGISTRY` and `DOCKERIO_TOKEN` mappings from the
-  workflow.
-- Create `container-registry` Environment secrets named `REGISTRY_USERNAME`
-  and `REGISTRY_TOKEN`.
+- Install or refresh the canonical consumer `container.yaml`.
+- Create repository or organization Actions secrets named
+  `DOCKERIO_REGISTRY` and `DOCKERIO_TOKEN`, or configure equivalent generic
+  secrets in the `container-registry` Environment.
 - Enable Actions to create pull requests.
 - Confirm `/usr/bin/container-test` and `/usr/bin/container-version` exist in
   the image and return meaningful exit status/output.

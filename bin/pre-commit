@@ -19,7 +19,7 @@ Usage: pre-commit [--pull-only] [--sync-project] [--ref REF]
 
 Downloads the shared, gitignored lint configuration and runs pre-commit.
   --pull-only     Download lint configuration but do not install/run hooks.
-  --sync-project  Also replace the canonical consumer workflow and .gitignore.
+  --sync-project  Replace the canonical consumer workflow and .gitignore.
   --ref REF       Download from a branch, tag, or commit (default: main).
 EOF
 }
@@ -76,6 +76,19 @@ echo "==> Downloading lint configuration from ${REPOSITORY}@${cicd_ref}"
 for file in "${CONFIG_FILES[@]}"; do
   download "templates/pre-commit/${file}" "${stage_dir}/${file}"
 done
+download .github/workflows/container.yaml "${stage_dir}/container.dev.yaml"
+sed \
+  -e "s|cicd-container.yaml@dev|cicd-container.yaml@${cicd_ref}|" \
+  -e "s|cicd_ref: dev|cicd_ref: ${cicd_ref}|" \
+  "${stage_dir}/container.dev.yaml" > "${stage_dir}/container.yaml"
+
+mkdir -p .github/workflows
+if [[ ! -e .github/workflows/container.yaml ]]; then
+  install -m 0644 "${stage_dir}/container.yaml" .github/workflows/container.yaml
+  echo "    + .github/workflows/container.yaml (cicd@${cicd_ref})"
+elif [[ "${sync_project}" != true ]]; then
+  echo "    = .github/workflows/container.yaml exists; preserving it"
+fi
 
 managed_file="$(git rev-parse --git-path cicd-managed-files)"
 exclude_file="$(git rev-parse --git-path info/exclude)"
@@ -97,8 +110,6 @@ done
 
 if [[ "${sync_project}" == true ]]; then
   echo "==> Synchronizing explicitly requested project templates"
-  mkdir -p .github/workflows
-  download templates/cicd/container.yaml "${stage_dir}/container.yaml"
   download templates/gitignore/.gitignore "${stage_dir}/gitignore"
   install -m 0644 "${stage_dir}/container.yaml" .github/workflows/container.yaml
   install -m 0644 "${stage_dir}/gitignore" .gitignore

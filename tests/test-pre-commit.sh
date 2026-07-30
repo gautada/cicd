@@ -27,10 +27,24 @@ export PATH="${source_root}/tests/fixtures:${PATH}"
 )
 
 [[ "$(cat "${repo}/.flake8")" == project-owned ]]
-[[ ! -e "${repo}/.github/workflows/container.yaml" ]]
+rg -Fq 'cicd-container.yaml@main' "${repo}/.github/workflows/container.yaml"
+rg -Fq 'cicd_ref: main' "${repo}/.github/workflows/container.yaml"
+if rg -Fq '@dev' "${repo}/.github/workflows/container.yaml"; then
+  echo 'ERROR: consumer workflow retained the development reference' >&2
+  exit 1
+fi
 [[ ! -e "${repo}/.gitignore" ]]
 [[ -e "${repo}/.pre-commit-config.yaml" ]]
-[[ -z "$(git -C "${repo}" status --short)" ]]
+[[ "$(git -C "${repo}" status --short --untracked-files=all)" == \
+  '?? .github/workflows/container.yaml' ]]
 [[ "$(wc -l < "${PRE_COMMIT_TEST_LOG}" | tr -d ' ')" == 4 ]]
+
+(
+  cd "${repo}"
+  "${source_root}/bin/pre-commit" --pull-only --sync-project --ref review-test
+)
+rg -Fq 'cicd-container.yaml@review-test' "${repo}/.github/workflows/container.yaml"
+rg -Fq 'cicd_ref: review-test' "${repo}/.github/workflows/container.yaml"
+[[ -e "${repo}/.gitignore" ]]
 
 echo 'pre-commit installer test: PASS'

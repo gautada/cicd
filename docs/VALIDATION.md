@@ -8,7 +8,7 @@ This file records repeatable local validation. The commands below passed on
 ```bash
 bash -n bin/pre-commit
 shellcheck --rcfile templates/pre-commit/.shellcheckrc bin/pre-commit tests/**/*.sh
-yamllint .github/workflows templates/cicd templates/pre-commit/.yamllint.yaml
+yamllint .github/workflows templates/pre-commit/.yamllint.yaml
 ruby -e 'require "yaml"; Dir.glob("**/*.{yml,yaml}", File::FNM_DOTMATCH).each { |f| YAML.load_file(f); puts f }'
 tests/test-static.sh
 tests/test-pre-commit.sh
@@ -36,5 +36,5 @@ all newly added documentation because untracked files are not included by
 Local tools cannot prove Environment approval behavior, fork-token SARIF
 permissions, native ARM runner availability, Docker Hub authentication,
 multi-architecture manifest publishing, or promotion PR permissions. Exercise
-the consumer template with every `@main` reference temporarily changed to the
-review branch, then restore or pin the reference after review.
+the canonical consumer workflow with `--ref` set to the review branch, then
+restore or pin the reference after review.

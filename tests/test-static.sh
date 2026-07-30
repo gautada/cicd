@@ -13,15 +13,14 @@ for command in actionlint shellcheck yamllint; do
 done
 
 actionlint
-actionlint templates/cicd/container.yaml
 actionlint .github/workflows/container.yaml
 shellcheck --rcfile templates/pre-commit/.shellcheckrc \
   bin/pre-commit tests/fixtures/curl tests/fixtures/pre-commit \
   tests/test-pre-commit.sh tests/test-static.sh
 yamllint -c templates/pre-commit/.yamllint.yaml \
-  .github/workflows templates/cicd templates/pre-commit/.yamllint.yaml
+  .github/workflows templates/pre-commit/.yamllint.yaml
 
-if rg -n '/usr/(local/)?bin/podman' .github/workflows templates/cicd; then
+if rg -n '/usr/(local/)?bin/podman' .github/workflows; then
   echo 'ERROR: hard-coded Podman path found' >&2
   exit 1
 fi
@@ -54,7 +53,12 @@ rg -q 'anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2  # v7' \
 for command in container-test container-version; do
   rg -q "/usr/bin/${command}" Containerfile
 done
-rg -q 'ci-podman-build.yaml@dev' .github/workflows/container.yaml
-rg -q 'cicd_ref: dev' .github/workflows/container.yaml
+rg -Fq 'uses: gautada/cicd/.github/workflows/cicd-container.yaml@dev' \
+  .github/workflows/container.yaml
+rg -Fq 'cicd_ref: dev' \
+  .github/workflows/container.yaml
+rg -Fq 'uses: ./.github/workflows/ci-podman-build.yaml' \
+  .github/workflows/cicd-container.yaml
+[[ ! -e templates/cicd/container.yaml ]]
 
 echo 'static workflow tests: PASS'

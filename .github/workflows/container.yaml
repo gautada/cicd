@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
   security-events: write
 
 concurrency:
@@ -17,73 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    uses: gautada/cicd/.github/workflows/ci-linter.yaml@dev
+  container:
+    uses: gautada/cicd/.github/workflows/cicd-container.yaml@dev
     with:
       cicd_ref: dev
-
-  deep-scan:
-    needs: lint
-    uses: gautada/cicd/.github/workflows/ci-deep-scan.yaml@dev
-
-  build-pr:
-    if: github.event_name == 'pull_request'
-    needs: [lint, deep-scan]
-    strategy:
-      fail-fast: false
-      matrix:
-        architecture: [amd64, arm64]
-    uses: gautada/cicd/.github/workflows/ci-podman-build.yaml@dev
-    with:
-      architecture: ${{ matrix.architecture }}
-      publish: false
-
-  build:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    needs: [lint, deep-scan]
-    strategy:
-      fail-fast: false
-      matrix:
-        architecture: [amd64, arm64]
-    uses: gautada/cicd/.github/workflows/ci-podman-build.yaml@dev
-    with:
-      architecture: ${{ matrix.architecture }}
-      environment_name: container-registry
-      publish: true
-
-  publish-dev:
-    if: github.ref == 'refs/heads/dev'
-    needs: build
-    uses: gautada/cicd/.github/workflows/ci-podman-publish.yaml@dev
-    with:
-      architectures: '["amd64", "arm64"]'
-      environment_name: container-registry
-
-  test-dev:
-    needs: publish-dev
-    uses: gautada/cicd/.github/workflows/ci-container-test.yaml@dev
-    with:
-      environment_name: container-registry
-
-  publish-release:
-    if: github.ref == 'refs/heads/main'
-    needs: build
-    uses: gautada/cicd/.github/workflows/ci-podman-publish.yaml@dev
-    with:
-      architectures: '["amd64", "arm64"]'
-      environment_name: container-registry
-      tag_dev: candidate
-
-  test-release:
-    needs: publish-release
-    uses: gautada/cicd/.github/workflows/ci-container-test.yaml@dev
-    with:
-      environment_name: container-registry
-      image_tag: candidate
-
-  release:
-    needs: test-release
-    uses: gautada/cicd/.github/workflows/cd-tag-latest.yaml@dev
-    with:
-      architectures: '["amd64", "arm64"]'
-      environment_name: container-registry
+    secrets:
+      DOCKERIO_REGISTRY: ${{ secrets.DOCKERIO_REGISTRY }}
+      DOCKERIO_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}

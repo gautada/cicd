@@ -1,0 +1,157 @@
+---
+name: cicd-container
+
+on:
+  workflow_call:
+    inputs:
+      architectures:
+        description: JSON array of CPU architectures
+        type: string
+        default: '["amd64", "arm64"]'
+      cicd_ref:
+        description: Revision used to obtain lint configuration
+        type: string
+        default: main
+      environment_name:
+        description: Protected GitHub Environment for registry operations
+        type: string
+        default: container-registry
+      registry_name:
+        description: Registry hostname
+        type: string
+        default: docker.io
+      promote:
+        description: Open a dev to main promotion PR after testing
+        type: boolean
+        default: true
+    secrets:
+      DOCKERIO_REGISTRY:
+        required: false
+      DOCKERIO_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  lint:
+    uses: ./.github/workflows/ci-linter.yaml
+    with:
+      cicd_ref: ${{ inputs.cicd_ref }}
+
+  deep-scan:
+    needs: lint
+    uses: ./.github/workflows/ci-deep-scan.yaml
+
+  build-pr:
+    if: github.event_name == 'pull_request'
+    needs: [lint, deep-scan]
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: ${{ fromJSON(inputs.architectures) }}
+    uses: ./.github/workflows/ci-podman-build.yaml
+    with:
+      architecture: ${{ matrix.architecture }}
+      publish: false
+
+  build:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [lint, deep-scan]
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: ${{ fromJSON(inputs.architectures) }}
+    uses: ./.github/workflows/ci-podman-build.yaml
+    with:
+      architecture: ${{ matrix.architecture }}
+      environment_name: ${{ inputs.environment_name }}
+      publish: true
+      registry_name: ${{ inputs.registry_name }}
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
+      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+
+  publish-dev:
+    if: github.ref == 'refs/heads/dev'
+    needs: build
+    uses: ./.github/workflows/ci-podman-publish.yaml
+    with:
+      architectures: ${{ inputs.architectures }}
+      environment_name: ${{ inputs.environment_name }}
+      registry_name: ${{ inputs.registry_name }}
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
+      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+
+  test-dev:
+    needs: publish-dev
+    uses: ./.github/workflows/ci-container-test.yaml
+    with:
+      environment_name: ${{ inputs.environment_name }}
+      registry_name: ${{ inputs.registry_name }}
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
+      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+
+  promote:
+    name: Open or update dev to main PR
+    if: inputs.promote && github.ref == 'refs/heads/dev'
+    needs: test-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Create promotion PR when none is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          existing="$(gh pr list --base main --head dev --state open \
+            --json number --jq '.[0].number // empty')"
+          if [[ -n "${existing}" ]]; then
+            echo "Promotion PR #${existing} already contains the latest dev commits."
+            exit 0
+          fi
+          gh pr create --base main --head dev \
+            --title "Promote dev to main" \
+            --body "Automated promotion after the dev image passed CI and container tests."
+
+  publish-release:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    uses: ./.github/workflows/ci-podman-publish.yaml
+    with:
+      architectures: ${{ inputs.architectures }}
+      environment_name: ${{ inputs.environment_name }}
+      registry_name: ${{ inputs.registry_name }}
+      tag_dev: candidate
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
+      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+
+  test-release:
+    needs: publish-release
+    uses: ./.github/workflows/ci-container-test.yaml
+    with:
+      environment_name: ${{ inputs.environment_name }}
+      image_tag: candidate
+      registry_name: ${{ inputs.registry_name }}
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
+      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+
+  release:
+    needs: test-release
+    uses: ./.github/workflows/cd-tag-latest.yaml
+    with:
+      architectures: ${{ inputs.architectures }}
+      environment_name: ${{ inputs.environment_name }}
+      registry_name: ${{ inputs.registry_name }}
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
+      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
