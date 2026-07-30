@@ -22,8 +22,14 @@ export PATH="${source_root}/tests/fixtures:${PATH}"
 
 (
   cd "${repo}"
-  "${source_root}/bin/pre-commit"
-  "${source_root}/bin/pre-commit"
+  "${source_root}/bin/pre-commit" --pull-only
+)
+[[ ! -e "${repo}/.github/workflows/container.yaml" ]]
+
+(
+  cd "${repo}"
+  "${source_root}/bin/pre-commit" --workflow container
+  "${source_root}/bin/pre-commit" --workflow container
 )
 
 [[ "$(cat "${repo}/.flake8")" == project-owned ]]
@@ -41,7 +47,8 @@ fi
 
 (
   cd "${repo}"
-  "${source_root}/bin/pre-commit" --pull-only --sync-project --ref review-test
+  "${source_root}/bin/pre-commit" --pull-only --workflow container \
+    --sync-project --ref review-test
 )
 rg -Fq 'cicd-container.yaml@review-test' "${repo}/.github/workflows/container.yaml"
 rg -Fq 'cicd_ref: review-test' "${repo}/.github/workflows/container.yaml"

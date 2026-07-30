@@ -1,5 +1,5 @@
 ---
-name: ci-podman-build
+name: Build Container Image
 
 on:
   workflow_call:

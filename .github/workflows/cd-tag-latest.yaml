@@ -1,5 +1,5 @@
 ---
-name: cd-tag-latest
+name: Release Container Image
 
 on:
   workflow_call:

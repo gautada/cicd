@@ -1,5 +1,5 @@
 ---
-name: ci-registry-clean
+name: Clean Container Registry
 
 on:
   workflow_call:
