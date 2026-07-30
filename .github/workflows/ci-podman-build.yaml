@@ -56,7 +56,7 @@ jobs:
     runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Validate inputs and locate tools
         env:
           ARCHITECTURE: ${{ inputs.architecture }}
@@ -119,7 +119,7 @@ jobs:
     timeout-minutes: 45
     environment: ${{ inputs.environment_name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Preflight configuration
         env:
           ARCHITECTURE: ${{ inputs.architecture }}

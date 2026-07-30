@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 10
     environment: ${{ inputs.environment_name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Validate configuration
         env:
           REGISTRY: ${{ inputs.registry_name }}

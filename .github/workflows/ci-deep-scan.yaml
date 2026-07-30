@@ -25,7 +25,7 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Scan source
         run: semgrep scan --config p/ci --error --sarif --output semgrep.sarif .
       - name: Upload Semgrep SARIF
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -52,7 +52,7 @@ jobs:
       - name: Scan repository filesystem
         if: inputs.image_ref == ''
         id: filesystem-scan
-        uses: anchore/scan-action@v6
+        uses: anchore/scan-action@v7
         with:
           path: .
           output-format: sarif
@@ -61,7 +61,7 @@ jobs:
       - name: Scan container image
         if: inputs.image_ref != ''
         id: image-scan
-        uses: anchore/scan-action@v6
+        uses: anchore/scan-action@v7
         with:
           image: ${{ inputs.image_ref }}
           output-format: sarif

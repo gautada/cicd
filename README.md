@@ -5,6 +5,14 @@ security scanning, building, testing, and publishing multi-architecture Podman
 images. It also provides an ephemeral pre-commit configuration and a consumer
 workflow template.
 
+The repository is also its own smallest consumer. `Containerfile` implements
+the built-in test and version commands, while `.github/workflows/container.yaml`
+calls the reusable workflows at `@dev`. Pull requests exercise secret-free
+lint, scan, and multi-architecture builds; pushes exercise the protected
+publish, test, and release path. Keep this container-only harness minimal.
+Future Go and Python combinations should use separate caller workflows or a
+documented matrix instead of adding language tooling to the baseline image.
+
 The design keeps registry credentials away from pull-request code, validates
 changes before publishing, and requires a human-reviewed `dev` to `main`
 promotion before release tags move.

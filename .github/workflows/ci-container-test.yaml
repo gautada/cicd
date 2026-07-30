@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 15
     environment: ${{ inputs.environment_name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Preflight and locate Podman
         env:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}

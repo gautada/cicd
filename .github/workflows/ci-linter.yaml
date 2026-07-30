@@ -19,11 +19,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out consumer repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Check out trusted CI/CD tooling
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: gautada/cicd
           ref: ${{ inputs.cicd_ref }}

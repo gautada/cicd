@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 20
     environment: ${{ inputs.environment_name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Preflight and locate Podman
         env:
           ARCHITECTURES: ${{ inputs.architectures }}

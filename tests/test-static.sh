@@ -13,6 +13,7 @@ done
 
 actionlint
 actionlint templates/cicd/container.yaml
+actionlint .github/workflows/container.yaml
 shellcheck --rcfile templates/pre-commit/.shellcheckrc \
   bin/pre-commit tests/fixtures/curl tests/fixtures/pre-commit \
   tests/test-pre-commit.sh tests/test-static.sh
@@ -38,5 +39,19 @@ done
 for removed in .yamllint archive .github/workflows/security-and-lint.yml; do
   [[ ! -e "${removed}" ]] || { echo "ERROR: obsolete path remains: ${removed}" >&2; exit 1; }
 done
+
+if rg -n 'actions/checkout@v[1-5]|anchore/scan-action@v[1-6]' .github/workflows; then
+  echo 'ERROR: obsolete GitHub Action major found' >&2
+  exit 1
+fi
+
+rg -q 'actions/checkout@v6' .github/workflows/ci-linter.yaml
+rg -q 'anchore/scan-action@v7' .github/workflows/ci-deep-scan.yaml
+
+for command in container-test container-version; do
+  rg -q "/usr/bin/${command}" Containerfile
+done
+rg -q 'ci-podman-build.yaml@dev' .github/workflows/container.yaml
+rg -q 'cicd_ref: dev' .github/workflows/container.yaml
 
 echo 'static workflow tests: PASS'
