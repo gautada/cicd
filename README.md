@@ -62,7 +62,8 @@ From the root of a consumer repository, the standard installer creates
 `.github/workflows/container.yaml` when it is missing and targets `cicd@main`:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash
+curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit |
+  bash -s -- --workflow container
 ```
 
 It preserves an existing workflow. To explicitly replace the workflow and
@@ -72,7 +73,8 @@ It preserves an existing workflow. To explicitly replace the workflow and
 curl -sSfL \
   https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit \
   -o /tmp/gautada-cicd-pre-commit
-bash /tmp/gautada-cicd-pre-commit --pull-only --sync-project
+bash /tmp/gautada-cicd-pre-commit \
+  --pull-only --workflow container --sync-project
 rm /tmp/gautada-cicd-pre-commit
 ```
 
@@ -83,6 +85,11 @@ workflow and `.gitignore`.
 The `--ref REF` option selects both the downloaded configuration revision and
 the literal orchestrator reference written into the consumer workflow. For
 example, `--ref dev` writes `@dev`; the default writes `@main`.
+
+Workflow installation is explicit. `--workflow container` selects the
+canonical container caller; omitting `--workflow` installs only lint
+configuration and hooks. This leaves room for future `go` and `python`
+workflow selections without making every repository install container CI.
 
 GitHub displays the **Run workflow** button only after the workflow containing
 `workflow_dispatch` exists on the repository's default branch. Until the
@@ -268,11 +275,15 @@ ShellCheck still require those executables on `PATH`.
 
 Options:
 
-```text
---pull-only       download rules without installing/running hooks
---sync-project    explicitly replace the consumer workflow and .gitignore
---ref REF         use a reviewed branch, tag, or commit instead of main
-```
+| Option | Effect |
+| --- | --- |
+| `--workflow container` | Install the container workflow when missing |
+| `--sync-project` | Replace the selected workflow and canonical `.gitignore` |
+| `--ref REF` | Use a reviewed branch, tag, or commit instead of `main` |
+| `--pull-only` | Download configuration without installing or running hooks |
+
+`--sync-project` requires `--workflow` so an overwrite is always tied to an
+explicitly selected project workflow.
 
 Generated lint files remain untracked because the canonical `.gitignore`
 lists them. Always inspect `git status` before committing.

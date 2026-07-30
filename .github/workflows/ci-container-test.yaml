@@ -1,5 +1,5 @@
 ---
-name: ci-container-test
+name: Test Published Container
 
 on:
   workflow_call:

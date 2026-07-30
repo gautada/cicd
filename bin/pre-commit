@@ -11,16 +11,18 @@ readonly CONFIG_FILES=(
 
 pull_only=false
 sync_project=false
+workflow=''
 cicd_ref="${CICD_REF:-${DEFAULT_REF}}"
 
 usage() {
   cat <<'EOF'
-Usage: pre-commit [--pull-only] [--sync-project] [--ref REF]
+Usage: pre-commit [--pull-only] [--workflow NAME] [--sync-project] [--ref REF]
 
 Downloads the shared, gitignored lint configuration and runs pre-commit.
-  --pull-only     Download lint configuration but do not install/run hooks.
-  --sync-project  Replace the canonical consumer workflow and .gitignore.
-  --ref REF       Download from a branch, tag, or commit (default: main).
+  --pull-only       Download configuration but do not install/run hooks.
+  --workflow NAME   Install a workflow; currently supported: container.
+  --sync-project    Replace the selected workflow and canonical .gitignore.
+  --ref REF         Use a branch, tag, or commit (default: main).
 EOF
 }
 
@@ -28,6 +30,11 @@ while (($#)); do
   case "$1" in
     --pull-only) pull_only=true ;;
     --sync-project) sync_project=true ;;
+    --workflow)
+      shift
+      [[ $# -gt 0 ]] || { echo "ERROR: --workflow requires a value" >&2; exit 2; }
+      workflow="$1"
+      ;;
     --ref)
       shift
       [[ $# -gt 0 ]] || { echo "ERROR: --ref requires a value" >&2; exit 2; }
@@ -38,6 +45,15 @@ while (($#)); do
   esac
   shift
 done
+
+[[ -z "${workflow}" || "${workflow}" == container ]] || {
+  echo "ERROR: Unsupported workflow: ${workflow}" >&2
+  exit 2
+}
+[[ "${sync_project}" != true || -n "${workflow}" ]] || {
+  echo "ERROR: --sync-project requires --workflow" >&2
+  exit 2
+}
 
 [[ "${cicd_ref}" =~ ^[A-Za-z0-9._/-]+$ ]] || {
   echo "ERROR: Unsafe ref: ${cicd_ref}" >&2
@@ -76,18 +92,21 @@ echo "==> Downloading lint configuration from ${REPOSITORY}@${cicd_ref}"
 for file in "${CONFIG_FILES[@]}"; do
   download "templates/pre-commit/${file}" "${stage_dir}/${file}"
 done
-download .github/workflows/container.yaml "${stage_dir}/container.dev.yaml"
-sed \
-  -e "s|cicd-container.yaml@dev|cicd-container.yaml@${cicd_ref}|" \
-  -e "s|cicd_ref: dev|cicd_ref: ${cicd_ref}|" \
-  "${stage_dir}/container.dev.yaml" > "${stage_dir}/container.yaml"
 
-mkdir -p .github/workflows
-if [[ ! -e .github/workflows/container.yaml ]]; then
-  install -m 0644 "${stage_dir}/container.yaml" .github/workflows/container.yaml
-  echo "    + .github/workflows/container.yaml (cicd@${cicd_ref})"
-elif [[ "${sync_project}" != true ]]; then
-  echo "    = .github/workflows/container.yaml exists; preserving it"
+if [[ "${workflow}" == container ]]; then
+  download .github/workflows/container.yaml "${stage_dir}/container.dev.yaml"
+  sed \
+    -e "s|cicd-container.yaml@dev|cicd-container.yaml@${cicd_ref}|" \
+    -e "s|cicd_ref: dev|cicd_ref: ${cicd_ref}|" \
+    "${stage_dir}/container.dev.yaml" > "${stage_dir}/container.yaml"
+
+  mkdir -p .github/workflows
+  if [[ ! -e .github/workflows/container.yaml ]]; then
+    install -m 0644 "${stage_dir}/container.yaml" .github/workflows/container.yaml
+    echo "    + .github/workflows/container.yaml (cicd@${cicd_ref})"
+  elif [[ "${sync_project}" != true ]]; then
+    echo "    = .github/workflows/container.yaml exists; preserving it"
+  fi
 fi
 
 managed_file="$(git rev-parse --git-path cicd-managed-files)"
@@ -108,7 +127,7 @@ for file in "${CONFIG_FILES[@]}"; do
   fi
 done
 
-if [[ "${sync_project}" == true ]]; then
+if [[ "${sync_project}" == true && "${workflow}" == container ]]; then
   echo "==> Synchronizing explicitly requested project templates"
   download templates/gitignore/.gitignore "${stage_dir}/gitignore"
   install -m 0644 "${stage_dir}/container.yaml" .github/workflows/container.yaml

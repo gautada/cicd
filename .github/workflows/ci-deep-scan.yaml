@@ -1,5 +1,5 @@
 ---
-name: ci-deep-scan
+name: Security and Supply Chain Scan
 
 on:
   workflow_call:

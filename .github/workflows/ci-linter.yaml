@@ -1,5 +1,5 @@
 ---
-name: ci-linter
+name: Lint Source
 
 on:
   workflow_call:

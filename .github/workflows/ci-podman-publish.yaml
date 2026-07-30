@@ -1,5 +1,5 @@
 ---
-name: ci-podman-publish
+name: Publish Multi-Architecture Image
 
 on:
   workflow_call:
