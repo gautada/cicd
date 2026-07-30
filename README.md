@@ -84,6 +84,11 @@ The `--ref REF` option selects both the downloaded configuration revision and
 the literal orchestrator reference written into the consumer workflow. For
 example, `--ref dev` writes `@dev`; the default writes `@main`.
 
+GitHub displays the **Run workflow** button only after the workflow containing
+`workflow_dispatch` exists on the repository's default branch. Until the
+initial promotion reaches `main`, rerun an existing `dev` workflow from its run
+page instead.
+
 To test an unreleased orchestrator from a consumer, change its single `@main`
 reference to the test branch and pass the same revision for lint configuration.
 GitHub requires the workflow reference to be literal; it cannot come from an
