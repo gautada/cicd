@@ -1,96 +1,89 @@
 ---
-name: ci-docker-clean
-# This action is meant to clean up old docker tags and unlinked build images.
+name: ci-registry-clean
 
 on:
   workflow_call:
     inputs:
-      registry_name:
-        description: "Registry to publish images"
+      registry_name: {description: Registry hostname, type: string, default: docker.io}
+      environment_name:
+        description: GitHub Environment containing registry secrets
         type: string
-        required: false
-        default: "docker.io"
-      dry_run:
-        description: "If true, only log tags to be deleted without performing the deletion"
-        type: boolean
-        required: false
-        default: true
+        default: container-registry
+      dry_run: {description: Report without deleting, type: boolean, default: true}
+      keep_per_architecture: {description: Commit build tags retained per architecture, type: number, default: 10}
     secrets:
-      REGISTRY_USERNAME:
-        required: true
-      REGISTRY_TOKEN:
-        required: true
+      REGISTRY_USERNAME: {required: false}
+      REGISTRY_TOKEN: {required: false}
+
+permissions:
+  contents: read
 
 jobs:
-  ci:
-    name: "Clean"
+  clean:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment_name }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: "Clean Excess and Unlinked Tags"
-        # yamllint disable rule:line-length
+      - uses: actions/checkout@v5
+      - name: Validate configuration
+        env:
+          REGISTRY: ${{ inputs.registry_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          KEEP: ${{ inputs.keep_per_architecture }}
         run: |
-          NS="${{ secrets.REGISTRY_USERNAME }}"
-          REPO="$(basename "$(pwd)")"
-          _PASSWORD="${{ secrets.REGISTRY_TOKEN }}"
-          DRY_RUN="${{ inputs.dry_run }}"
-
-          # Authenticate with Docker Hub
-          LOGIN_PAYLOAD="$(jq -nc --arg username "${NS}" --arg password "${_PASSWORD}" \
-           '{username:$username, password:$password}')"
-
-          TOKEN="$(curl -sS -H 'Content-Type: application/json' -X POST \
-            -d "$LOGIN_PAYLOAD" https://hub.docker.com/v2/users/login/ | jq -r .token)"
-
-          if [ "$TOKEN" = "null" ]; then
-            echo "ERROR: Failed to authenticate with Docker Hub." >&2
-            exit 1
-          fi
-
-          # Pull tags
-          list_tags() {
-            local url="https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags?page_size=100"
-            while [ -n "$url" ] && [ "$url" != "null" ]; do
-              page="$(curl -sS -H "Authorization: JWT $TOKEN" "$url")"
-              echo "$page"
-              url="$(echo "$page" | jq -r '.next')"
-            done
+          set -euo pipefail
+          [[ "${REGISTRY}" == docker.io ]] || {
+            echo "::error::Registry cleanup currently supports docker.io only"
+            exit 2
           }
-
-          delete_tags() {
-            echo "${1}" | while IFS= read -r TAG; do
-              if [ -z "$TAG" ]; then continue; fi
-              if [ "$DRY_RUN" = "true" ]; then
-                echo "[DRY RUN] Would delete: ${NS}/${REPO}:${TAG}"
+          [[ -n "${REGISTRY_USERNAME}" && -n "${REGISTRY_TOKEN}" ]] || {
+            echo "::error::REGISTRY_USERNAME and REGISTRY_TOKEN are required in '${{ inputs.environment_name }}'"
+            exit 2
+          }
+          [[ "${KEEP}" =~ ^[0-9]+$ ]] || { echo "::error::keep_per_architecture must be non-negative"; exit 2; }
+      - name: Remove expired commit build tags
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          KEEP: ${{ inputs.keep_per_architecture }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY#*/}"
+          payload="$(jq -nc --arg username "${REGISTRY_USERNAME}" \
+            --arg password "${REGISTRY_TOKEN}" \
+            '{username:$username,password:$password}')"
+          token="$(printf '%s' "${payload}" | \
+            curl --fail --silent --show-error --retry 3 \
+              -H 'Content-Type: application/json' -X POST --data-binary @- \
+              https://hub.docker.com/v2/users/login/ | jq -er .token)"
+          tags_file="$(mktemp)"
+          trap 'rm -f "${tags_file}"' EXIT
+          url="https://hub.docker.com/v2/namespaces/${REGISTRY_USERNAME}"
+          url+="/repositories/${repo}/tags?page_size=100&ordering=last_updated"
+          while [[ -n "${url}" && "${url}" != null ]]; do
+            page="$(printf 'header = "Authorization: JWT %s"\n' "${token}" | \
+              curl --fail --silent --show-error --retry 3 --config - "${url}")"
+            jq -r '.results[] | [.name, .last_updated] | @tsv' <<< "${page}" >> "${tags_file}"
+            url="$(jq -r '.next // empty' <<< "${page}")"
+          done
+          for architecture in amd64 arm64; do
+            pattern="^build-${architecture}-[0-9a-f]{7,40}$"
+            mapfile -t candidates < <(
+              awk -F '\t' -v pattern="${pattern}" '$1 ~ pattern {print $1}' "${tags_file}"
+            )
+            for ((index=KEEP; index<${#candidates[@]}; index++)); do
+              tag="${candidates[index]}"
+              if [[ "${DRY_RUN}" == true ]]; then
+                echo "[dry-run] Would delete ${REGISTRY_USERNAME}/${repo}:${tag}"
               else
-                echo "Deleting: ${NS}/${REPO}:${TAG}"
-                if curl -fsS -X DELETE -H "Authorization: JWT ${TOKEN}" \
-                        "https://hub.docker.com/v2/namespaces/${NS}/repositories/${REPO}/tags/${TAG}/" \
-                        -o /dev/null; then
-                  echo "  ✔ deleted"
-                else
-                  echo "  ✖ failed"
-                fi
+                delete_url="https://hub.docker.com/v2/namespaces/${REGISTRY_USERNAME}"
+                delete_url+="/repositories/${repo}/tags/${tag}/"
+                printf 'header = "Authorization: JWT %s"\n' "${token}" | \
+                  curl --fail --silent --show-error --retry 3 \
+                    --config - -X DELETE "${delete_url}"
+                echo "Deleted ${REGISTRY_USERNAME}/${repo}:${tag}"
               fi
             done
-          }
-
-          ALL_JSON="$(list_tags)"
-
-          # Identify builds no longer referenced by any manifest (unlinked)
-          # We focus on the architecture-specific build tags: build-(amd64|arm64)-[hash]
-          BUILD_TAGS="$(echo "$ALL_JSON" | jq -r '.results[]?.name | select(test("^build-(?:amd64|arm64)-[[:xdigit:]]{7}$"))')"
-
-          echo "Processing tags for ${NS}/${REPO}..."
-          if [ "$DRY_RUN" = "true" ]; then
-            echo "Running in DRY RUN mode. No tags will be deleted."
-          fi
-
-          if [ -z "$BUILD_TAGS" ]; then
-            echo "No build tags found to clean."
-          else
-            delete_tags "${BUILD_TAGS}"
-          fi
-        # yamllint enable rule:line-length
+          done

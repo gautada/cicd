@@ -1,61 +1,117 @@
 ---
-name: "Continuous Integration: Build and Publish Multi-Architecture Container Images"
-# This is the generic reusable template for building containers
+name: Container CI/CD
 
-'on':
-  workflow_dispatch: {}
-  push:
-    branches:
-      - dev
+on:
+  workflow_dispatch:
   pull_request:
-    branches:
-      - main
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  check:
+  lint:
     uses: gautada/cicd/.github/workflows/ci-linter.yaml@main
+
   deep-scan:
-    needs: check
+    needs: lint
     uses: gautada/cicd/.github/workflows/ci-deep-scan.yaml@main
-  build-arm64:
-    needs: check
+
+  # Pull requests build locally without registry credentials. This proves that
+  # untrusted changes compile while keeping Environment secrets out of PR jobs.
+  build-pr:
+    if: github.event_name == 'pull_request'
+    needs: [lint, deep-scan]
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64]
     uses: gautada/cicd/.github/workflows/ci-podman-build.yaml@main
     with:
-      architecture: "arm64"
-    secrets:
-      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
-      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
-  build-amd64:
-    needs: check
+      architecture: ${{ matrix.architecture }}
+      publish: false
+
+  # Pushes to protected branches may use the named GitHub Environment. Store
+  # REGISTRY_USERNAME and REGISTRY_TOKEN in that Environment.
+  build:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [lint, deep-scan]
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64]
     uses: gautada/cicd/.github/workflows/ci-podman-build.yaml@main
     with:
-      architecture: "amd64"
-    secrets:
-      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
-      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
-  publish:
-    needs: [build-arm64, build-amd64]
+      architecture: ${{ matrix.architecture }}
+      environment_name: container-registry
+      publish: true
+
+  publish-dev:
+    if: github.ref == 'refs/heads/dev'
+    needs: build
     uses: gautada/cicd/.github/workflows/ci-podman-publish.yaml@main
     with:
-      architectures: '["arm64", "amd64"]'
-    secrets:
-      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
-      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
-  clean:
-    needs: [publish]
-    uses: gautada/cicd/.github/workflows/ci-registry-clean.yaml@main
-    secrets:
-      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
-      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
-  test:
-    needs: [clean]
+      architectures: '["amd64", "arm64"]'
+      environment_name: container-registry
+
+  test-dev:
+    needs: publish-dev
     uses: gautada/cicd/.github/workflows/ci-container-test.yaml@main
-    secrets:
-      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
-      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+    with:
+      environment_name: container-registry
+
+  promote:
+    name: Open or update dev to main PR
+    if: github.ref == 'refs/heads/dev'
+    needs: test-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Create promotion PR when none is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          existing="$(gh pr list --base main --head dev --state open \
+            --json number --jq '.[0].number // empty')"
+          if [[ -n "${existing}" ]]; then
+            echo "Promotion PR #${existing} already contains the latest dev commits."
+            exit 0
+          fi
+          gh pr create --base main --head dev \
+            --title "Promote dev to main" \
+            --body "Automated promotion after the dev image passed CI and container tests."
+
+  publish-release:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    uses: gautada/cicd/.github/workflows/ci-podman-publish.yaml@main
+    with:
+      architectures: '["amd64", "arm64"]'
+      environment_name: container-registry
+      tag_dev: candidate
+
+  test-release:
+    needs: publish-release
+    uses: gautada/cicd/.github/workflows/ci-container-test.yaml@main
+    with:
+      environment_name: container-registry
+      image_tag: candidate
+
   release:
-    needs: [test]
+    needs: test-release
     uses: gautada/cicd/.github/workflows/cd-tag-latest.yaml@main
-    secrets:
-      REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
-      REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+    with:
+      architectures: '["amd64", "arm64"]'
+      environment_name: container-registry

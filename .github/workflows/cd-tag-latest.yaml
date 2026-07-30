@@ -1,114 +1,92 @@
 ---
 name: cd-tag-latest
-# Reusable workflow that promotes the :dev image to :latest and tags it with
-# the authoritative container version.
-#
-# How it works:
-#   1. Pull the per-architecture build images (build-amd64, build-arm64)
-#   2. Assemble them into a multi-arch :latest manifest
-#   3. Retrieve the container version by running /usr/bin/container-version
-#      inside the amd64 build image (one-shot, no service startup required)
-#   4. Push :latest and the versioned tag (e.g. :12.9) to the registry
-#   5. Fully clean up the local podman environment
 
 on:
   workflow_call:
     inputs:
-      registry_name:
-        description: "Registry to publish images"
-        type: string
-        required: false
-        default: "docker.io"
+      architectures: {description: JSON array of architectures, type: string, required: true}
+      registry_name: {description: Registry hostname, type: string, default: docker.io}
+      tag_build: {description: Intermediate tag prefix, type: string, default: build}
+      environment_name: {description: Protected GitHub Environment, type: string, default: container-registry}
     secrets:
-      REGISTRY_USERNAME:
-        required: true
-      REGISTRY_TOKEN:
-        required: true
+      REGISTRY_USERNAME: {required: false}
+      REGISTRY_TOKEN: {required: false}
+
+permissions:
+  contents: read
 
 jobs:
-  cd:
-    name: "Retag Image(dev->latest)"
+  release:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment_name }}
     steps:
-      - name: Checkout
-        # Check out the calling repository so pwd-derived image names resolve correctly
-        uses: actions/checkout@v4
-
-      - name: Install Tools
-        # Install podman explicitly to ensure a consistent, known version is used.
-        # Matches the pattern established in ci-podman-build.yaml and ci-container-test.yaml.
+      - uses: actions/checkout@v5
+      - name: Preflight and locate Podman
+        env:
+          ARCHITECTURES: ${{ inputs.architectures }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          sudo /usr/bin/apt-get update
-          sudo /usr/bin/apt-get install --yes podman
-
-      - name: Registry Login(${{ inputs.registry_name }})
-        # Authenticate to the registry before pulling or pushing any images
-        run: |
-          echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
-            --username "${{ secrets.REGISTRY_USERNAME }}" \
-            --password-stdin ${{ inputs.registry_name }}
-
-      - name: Pull the (dev)Image
-        # Pull the per-architecture build images that were published by ci-podman-publish,
-        # then assemble them into a multi-arch :latest manifest locally.
-        # Starts with a full image purge to avoid stale layers from previous runs.
-        run: |
-          set -x
-          /usr/bin/podman rmi --all --force
-          CONTAINER="${{ inputs.registry_name }}"
-          CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}"
-          CONTAINER+="/$(pwd | awk -F'/' '{print $NF}')"
-          MANIFEST="${CONTAINER}:build"
-          /usr/bin/podman pull "${MANIFEST}-amd64"
-          /usr/bin/podman pull "${MANIFEST}-arm64"
-          LATEST="${CONTAINER}:latest"
-          /usr/bin/podman manifest create "${LATEST}" \
-                   "${MANIFEST}-amd64" "${MANIFEST}-arm64"
-
-      - name: Tag the latest Image
-        # Only runs on a pull request targeting main (i.e. a production release).
-        #
-        # VERSION is obtained by running /usr/bin/container-version inside the
-        # amd64 build image rather than reading from a static .args file.
-        # This ensures the version reflects what is actually baked into the image.
-        #
-        # Design: --rm + --entrypoint override is used instead of detach+exec+trap
-        # because this is a one-shot read — no service startup is required.
-        # --rm auto-removes the container on exit; no separate cleanup step needed.
-        #
-        # After tagging, all local containers and images are purged to leave the
-        # runner in a clean state.
-        # if: github.event_name == 'pull_request' && github.base_ref == 'main'
-        # if: github.base_ref == 'main'
-        # yamllint disable rule:line-length
-        run: |
-          CONTAINER="${{ inputs.registry_name }}"
-          CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}"
-          CONTAINER+="/$(pwd | awk -F'/' '{print $NF}')"
-
-          # Run container-version inside the amd64 build image (already pulled).
-          # --entrypoint overrides s6-svscan so only container-version executes.
-          # --rm removes the container automatically when it exits.
-          VERSION=$(/usr/bin/podman run --rm \
-                      --entrypoint /usr/bin/container-version \
-                      "${CONTAINER}:build-amd64" | tr -d '[:space:]')
-
-          # Fail fast if container-version returned empty output
-          if [ -z "${VERSION}" ]; then
-            echo "ERROR: /usr/bin/container-version returned empty output"
-            exit 1
+          set -euo pipefail
+          missing=()
+          [[ -n "${REGISTRY_USERNAME}" ]] || missing+=(REGISTRY_USERNAME)
+          [[ -n "${REGISTRY_TOKEN}" ]] || missing+=(REGISTRY_TOKEN)
+          if ((${#missing[@]})); then
+            echo "::error::Missing GitHub Environment secrets: ${missing[*]}."
+            echo "::error::Configure environment '${{ inputs.environment_name }}'."
+            exit 2
           fi
-          echo "Container version: ${VERSION}"
-
-          # Push the multi-arch :latest manifest assembled in the Pull step
-          /usr/bin/podman manifest push "${CONTAINER}:latest"
-
-          # Tag :latest with the version string and push the versioned manifest
-          VERSION_TAG="${CONTAINER}:${VERSION}"
-          /usr/bin/podman tag "${CONTAINER}:latest" "${VERSION_TAG}"
-          /usr/bin/podman manifest push "${VERSION_TAG}"
-
-          # Full cleanup: remove all local images and system resources
-          /usr/bin/podman rmi --all --force || true
-          /usr/bin/podman system prune --all --force || true
-        # yamllint enable rule:line-length
+          jq -e 'type == "array" and length > 0' <<< "${ARCHITECTURES}" >/dev/null
+          sudo apt-get update
+          sudo apt-get install --yes podman
+          podman_path="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
+          skopeo_path="$(command -v skopeo)" || { echo "::error::skopeo was not found on PATH"; exit 1; }
+          echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
+          echo "SKOPEO=${skopeo_path}" >> "${GITHUB_ENV}"
+          "${podman_path}" --version
+          "${skopeo_path}" --version
+      - name: Publish immutable version and latest
+        env:
+          ARCHITECTURES: ${{ inputs.architectures }}
+          REGISTRY: ${{ inputs.registry_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          TAG_BUILD: ${{ inputs.tag_build }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${REGISTRY_TOKEN}" | "${PODMAN}" login "${REGISTRY}" \
+            --username "${REGISTRY_USERNAME}" --password-stdin
+          container="${REGISTRY}/${REGISTRY_USERNAME}/${GITHUB_REPOSITORY#*/}"
+          sha="$(git rev-parse --short HEAD)"
+          first_arch="$(jq -r '.[0]' <<< "${ARCHITECTURES}")"
+          first_image="${container}:${TAG_BUILD}-${first_arch}-${sha}"
+          "${PODMAN}" pull "${first_image}"
+          version="$("${PODMAN}" run --rm --entrypoint /usr/bin/container-version "${first_image}" | tr -d '[:space:]')"
+          [[ "${version}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || {
+            echo "::error::container-version returned an empty or invalid registry tag: '${version}'"
+            exit 2
+          }
+          latest="${container}:latest"
+          "${PODMAN}" manifest rm "${latest}" 2>/dev/null || true
+          "${PODMAN}" manifest create "${latest}"
+          while IFS= read -r architecture; do
+            image="${container}:${TAG_BUILD}-${architecture}-${sha}"
+            "${PODMAN}" pull "${image}"
+            "${PODMAN}" manifest add "${latest}" "${image}"
+          done < <(jq -r '.[]' <<< "${ARCHITECTURES}")
+          versioned="${container}:${version}"
+          candidate_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
+            "docker://${container}:candidate")"
+          if version_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
+            "docker://${versioned}" 2>/dev/null)"; then
+            [[ "${version_digest}" == "${candidate_digest}" ]] || {
+              echo "::error::Refusing to overwrite immutable tag ${versioned}"
+              exit 1
+            }
+            echo "${versioned} already identifies this manifest; keeping it."
+          else
+            "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
+          fi
+          "${PODMAN}" manifest push --all "${latest}" "docker://${latest}"
+          printf 'Published %s and %s\n' "${latest}" "${versioned}" >> "${GITHUB_STEP_SUMMARY}"

@@ -1,96 +1,211 @@
 ---
 name: ci-podman-build
-# Reusable GH action that builds a container for a specified arch
 
 on:
   workflow_call:
     inputs:
       architecture:
-        description: "CPU Architecture for Build"
+        description: CPU architecture (amd64 or arm64)
         type: string
         required: true
       args_file:
-        description: "Path to build-arg file"
+        description: Path to the build-argument file
         type: string
-        required: false
-        default: ".args"
+        default: .args
       containerfile:
-        description: "Path to Containerfile"
+        description: Path to the Containerfile
         type: string
-        required: false
-        default: "Containerfile"
+        default: Containerfile
       registry_name:
-        description: "Registry to publish images"
+        description: Registry hostname
         type: string
-        required: false
-        default: "docker.io"
+        default: docker.io
       tag_build:
-        description: "Tag for build containers"
+        description: Prefix for intermediate images
         type: string
-        required: false
-        default: "build"
+        default: build
+      environment_name:
+        description: GitHub Environment containing registry secrets
+        type: string
+        default: container-registry
+      publish:
+        description: Push the intermediate image to the registry
+        type: boolean
+        default: false
+      test_command:
+        description: Built-in command run inside the built image
+        type: string
+        default: /usr/bin/container-test
+      test_timeout:
+        description: Seconds allowed for built-in tests
+        type: number
+        default: 60
     secrets:
       REGISTRY_USERNAME:
-        required: true
+        required: false
       REGISTRY_TOKEN:
-        required: true
+        required: false
+
+permissions:
+  contents: read
 
 jobs:
-  ci:
-    name: "Build & Push Image"
-    # runs-on: ubuntu-latest
-    # yamllint disable rule:line-length
+  local:
+    name: Build ${{ inputs.architecture }} without secrets
+    if: inputs.publish == false
     runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    # yamllint enable rule:line-length
+    timeout-minutes: 45
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # - name: Export .args to GITHUB_ENV (if present)
-      #   if: ${{ hashFiles(inputs.args_file) != '' }}
-      #   run: |
-      #     while IFS='=' read -r key value; do
-      #       echo "$key=$value" >> "$GITHUB_ENV"
-      #     done < "${{ inputs.args_file }}"
-
-      - name: Install Tools
+      - uses: actions/checkout@v5
+      - name: Validate inputs and locate tools
+        env:
+          ARCHITECTURE: ${{ inputs.architecture }}
+          ARGS_FILE: ${{ inputs.args_file }}
+          CONTAINERFILE: ${{ inputs.containerfile }}
         run: |
-          sudo /usr/bin/apt-get update
-          sudo /usr/bin/apt-get install --yes podman
-            # qemu-user-static \
-            # binfmt-support \
-            # podman
-          # if [ "${{ inputs.architecture }}" = "arm64" ]; then
-          #   sudo update-binfmts --enable qemu-aarch64 || true
-          # fi
-          # wich update-binftms
-
-      - name: Registry Login
+          set -euo pipefail
+          [[ "${ARCHITECTURE}" == amd64 || "${ARCHITECTURE}" == arm64 ]] || {
+            echo "::error::architecture must be amd64 or arm64"
+            exit 2
+          }
+          [[ -f "${CONTAINERFILE}" ]] || { echo "::error::Missing ${CONTAINERFILE}"; exit 2; }
+          sudo apt-get update
+          sudo apt-get install --yes podman
+          podman_path="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
+          echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
+          "${podman_path}" --version
+      - name: Build image
+        env:
+          ARCHITECTURE: ${{ inputs.architecture }}
+          ARGS_FILE: ${{ inputs.args_file }}
+          CONTAINERFILE: ${{ inputs.containerfile }}
         run: |
-          echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
-            --username "${{ secrets.REGISTRY_USERNAME }}" \
-            --password-stdin ${{ inputs.registry_name }}
-
-      - name: Build & Push Image
+          set -euo pipefail
+          args="$(mktemp)"
+          trap 'rm -f "${args}"' EXIT
+          if [[ -f "${ARGS_FILE}" ]]; then grep -v '^GIT_COMMIT=' "${ARGS_FILE}" > "${args}" || true; fi
+          printf 'GIT_COMMIT=%s\n' "$(git rev-parse --short HEAD)" >> "${args}"
+          "${PODMAN}" build --arch "${ARCHITECTURE}" --layers \
+            --ulimit nofile=65536:65536 --build-arg-file "${args}" \
+            --file "${CONTAINERFILE}" --tag "local/test:${ARCHITECTURE}" .
+          echo "LOCAL_IMAGE=local/test:${ARCHITECTURE}" >> "${GITHUB_ENV}"
+      - name: Test built image
+        env:
+          TEST_COMMAND: ${{ inputs.test_command }}
+          TEST_TIMEOUT: ${{ inputs.test_timeout }}
         run: |
-          IMG="${{ inputs.registry_name }}"
-          IMG+="/${{ secrets.REGISTRY_USERNAME }}/"
-          IMG+="$(pwd | awk -F'/' '{print $NF}')"
-          IMG+=":build-${{ inputs.architecture }}"
-          IMG+="-$(/usr/bin/git rev-parse --short HEAD)"
-          # Ensure build-arg file exists and carries the current commit signature
-          touch ${{ inputs.args_file }}
-          TMP_ARGS=$(mktemp)
-          if [ -s "${{ inputs.args_file }}" ]; then
-            /usr/bin/grep -v '^GIT_COMMIT=' "${{ inputs.args_file }}" > "${TMP_ARGS}" || true
+          set -euo pipefail
+          name="build-test-${GITHUB_RUN_ID}-${{ inputs.architecture }}"
+          "${PODMAN}" run --detach --name "${name}" "${LOCAL_IMAGE}"
+          status=1
+          deadline=$((SECONDS + TEST_TIMEOUT))
+          while true; do
+            if "${PODMAN}" exec "${name}" "${TEST_COMMAND}"; then
+              status=0
+              break
+            fi
+            ((SECONDS < deadline)) || break
+            [[ "$("${PODMAN}" inspect --format '{{.State.Running}}' "${name}")" == true ]] || break
+            sleep 5
+          done
+          if ((status != 0)); then "${PODMAN}" logs "${name}" || true; fi
+          "${PODMAN}" rm --force "${name}" || true
+          exit "${status}"
+
+  publish:
+    name: Build and push ${{ inputs.architecture }}
+    if: inputs.publish == true
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    environment: ${{ inputs.environment_name }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Preflight configuration
+        env:
+          ARCHITECTURE: ${{ inputs.architecture }}
+          CONTAINERFILE: ${{ inputs.containerfile }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${REGISTRY_USERNAME}" ]] || missing+=(REGISTRY_USERNAME)
+          [[ -n "${REGISTRY_TOKEN}" ]] || missing+=(REGISTRY_TOKEN)
+          if ((${#missing[@]})); then
+            echo "::error::Missing GitHub Environment secrets: ${missing[*]}."
+            echo "::error::Configure environment '${{ inputs.environment_name }}'."
+            exit 2
           fi
-          /usr/bin/mv "${TMP_ARGS}" "${{ inputs.args_file }}"
-          echo "GIT_COMMIT=$(/usr/bin/git rev-parse --short HEAD)" >> "${{ inputs.args_file }}"
-          /usr/bin/podman build \
-            --arch "${{ inputs.architecture }}" \
-            --ulimit nofile=65536:65536 \
-            --build-arg-file ${{ inputs.args_file }} \
-            --file ${{ inputs.containerfile }} \
-            --no-cache \
-            --tag "${IMG}" .
-          /usr/bin/podman push "${IMG}"
+          [[ "${ARCHITECTURE}" == amd64 || "${ARCHITECTURE}" == arm64 ]] || {
+            echo "::error::Invalid architecture"
+            exit 2
+          }
+          [[ -f "${CONTAINERFILE}" ]] || {
+            echo "::error::Missing ${CONTAINERFILE}"
+            exit 2
+          }
+      - name: Install and locate Podman
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes podman
+          podman_path="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
+          echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
+          "${podman_path}" --version
+      - name: Log in to registry
+        env:
+          REGISTRY: ${{ inputs.registry_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${REGISTRY_TOKEN}" | "${PODMAN}" login "${REGISTRY}" \
+            --username "${REGISTRY_USERNAME}" --password-stdin
+      - name: Build image
+        env:
+          ARCHITECTURE: ${{ inputs.architecture }}
+          ARGS_FILE: ${{ inputs.args_file }}
+          CONTAINERFILE: ${{ inputs.containerfile }}
+          REGISTRY: ${{ inputs.registry_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          TAG_BUILD: ${{ inputs.tag_build }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse --short HEAD)"
+          repo="${GITHUB_REPOSITORY#*/}"
+          image="${REGISTRY}/${REGISTRY_USERNAME}/${repo}:${TAG_BUILD}-${ARCHITECTURE}-${sha}"
+          args="$(mktemp)"
+          trap 'rm -f "${args}"' EXIT
+          if [[ -f "${ARGS_FILE}" ]]; then grep -v '^GIT_COMMIT=' "${ARGS_FILE}" > "${args}" || true; fi
+          printf 'GIT_COMMIT=%s\n' "${sha}" >> "${args}"
+          "${PODMAN}" build --arch "${ARCHITECTURE}" --layers \
+            --ulimit nofile=65536:65536 --build-arg-file "${args}" \
+            --file "${CONTAINERFILE}" --tag "${image}" .
+          echo "LOCAL_IMAGE=${image}" >> "${GITHUB_ENV}"
+      - name: Test built image
+        env:
+          TEST_COMMAND: ${{ inputs.test_command }}
+          TEST_TIMEOUT: ${{ inputs.test_timeout }}
+        run: |
+          set -euo pipefail
+          name="build-test-${GITHUB_RUN_ID}-${{ inputs.architecture }}"
+          "${PODMAN}" run --detach --name "${name}" "${LOCAL_IMAGE}"
+          status=1
+          deadline=$((SECONDS + TEST_TIMEOUT))
+          while true; do
+            if "${PODMAN}" exec "${name}" "${TEST_COMMAND}"; then
+              status=0
+              break
+            fi
+            ((SECONDS < deadline)) || break
+            [[ "$("${PODMAN}" inspect --format '{{.State.Running}}' "${name}")" == true ]] || break
+            sleep 5
+          done
+          if ((status != 0)); then "${PODMAN}" logs "${name}" || true; fi
+          "${PODMAN}" rm --force "${name}" || true
+          exit "${status}"
+      - name: Push tested image
+        run: |
+          set -euo pipefail
+          "${PODMAN}" push "${LOCAL_IMAGE}"
+          echo "Built, tested, and pushed ${LOCAL_IMAGE}" >> "${GITHUB_STEP_SUMMARY}"
