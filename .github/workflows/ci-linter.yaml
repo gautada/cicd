@@ -1,66 +1,65 @@
 ---
-name: "Quality Check(super-linter)"
-# This is the reusable action to run the linter on the repo.
-# This works hand in hand with pre-commit
+name: ci-linter
 
 on:
-  push:
   workflow_call:
+    inputs:
+      cicd_ref:
+        description: cicd revision containing lint configuration
+        type: string
+        default: main
 
 permissions:
   contents: read
-  checks: write
-  statuses: write
 
 jobs:
-  linter:
-    name: "Quality Check(super-linter)"
+  lint:
+    name: Super Linter
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Check out consumer repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: "Pull Linter Configs"
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --pull-only
-
-      - name: "Run Super-Linter"
+      - name: Check out trusted CI/CD tooling
+        uses: actions/checkout@v5
+        with:
+          repository: gautada/cicd
+          ref: ${{ inputs.cicd_ref }}
+          path: .cicd-tooling
+          persist-credentials: false
+      - name: Pull ephemeral linter configuration
+        env:
+          CICD_REF: ${{ inputs.cicd_ref }}
+        run: .cicd-tooling/bin/pre-commit --pull-only --ref "${CICD_REF}"
+      - name: Remove tooling checkout from lint scope
+        run: rm -rf .cicd-tooling
+      - name: Run Super Linter
         uses: super-linter/super-linter@v8
         env:
-          OUTPUT_DETAILS: detailed
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LINTER_RULES_PATH: .
-          # GITHUB_STATUS_API: false disables reporting status to GitHub (fixes 403 errors when token is read-only)
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_STATUS_API: false
-          # VALIDATE_BASH: true
+          OUTPUT_DETAILS: detailed
+          LINTER_RULES_PATH: .
           FILTER_REGEX_EXCLUDE: '.*\.zsh$'
           DOCKERFILE_HADOLINT_FILE_NAME: .hadolint.yaml
-          # *************************************** PYTHON
-          # VALIDATE_PYTHON_RUFF: true
-          VALIDATE_PYTHON_RUFF_FORMAT: false
+          VALIDATE_BASH_EXEC: false
+          VALIDATE_BIOME_FORMAT: false
+          VALIDATE_CHECKOV: false
+          VALIDATE_GITHUB_ACTIONS_ZIZMOR: false
+          VALIDATE_JAVASCRIPT_PRETTIER: false
+          VALIDATE_JSON_PRETTIER: false
+          VALIDATE_MARKDOWN_PRETTIER: false
+          VALIDATE_NATURAL_LANGUAGE: false
           VALIDATE_PYTHON: false
           VALIDATE_PYTHON_BLACK: false
           VALIDATE_PYTHON_FLAKE8: false
           VALIDATE_PYTHON_ISORT: false
           VALIDATE_PYTHON_MYPY: false
           VALIDATE_PYTHON_PYLINT: false
-          # PYTHON_ISORT_CONFIG_FILE: pyproject.toml
-          # VALIDATE_PYTHON_RUFF: true
-          # VALIDATE_PYTHON_BLACK: true
-          
-          VALIDATE_CHECKOV: false
-          VALIDATE_JAVASCRIPT_PRETTIER: false
-          VALIDATE_NATURAL_LANGUAGE: false
-          VALIDATE_BASH_EXEC: false
+          VALIDATE_PYTHON_RUFF_FORMAT: false
           VALIDATE_SHELL_SHFMT: false
-
-          VALIDATE_BIOME_FORMAT: false # JavaScript/TypeScript projects
-          VALIDATE_GITHUB_ACTIONS_ZIZMOR: false # GitHub Actions workflows
-          VALIDATE_JSON_PRETTIER: false
           VALIDATE_SPELL_CODESPELL: false
-          VALIDATE_MARKDOWN_PRETTIER: false
           VALIDATE_TRIVY: false
-          # YAML_CONFIG_FILE: templates/pre-commit/.yamllint.yaml
           VALIDATE_YAML_PRETTIER: false

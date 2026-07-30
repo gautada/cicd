@@ -1,123 +1,121 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# =============================================================================
-# bin/pre-commit
-# Syncs pre-commit config from gautada/cicd and runs pre-commit --all-files.
-#
-# Usage:
-#   curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash
-#   curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --pull-only
-#
-# Options:
-#   --pull-only    Pull config files from gautada/cicd only; skip install and run.
-#
-# Requirements:
-#   - Run from the root of a git checkout
-#   - pre-commit must be installed (pipx install --global pre-commit)
-#   - curl must be available
-# =============================================================================
 set -euo pipefail
 
-CICD_RAW="https://raw.githubusercontent.com/gautada/cicd/main/templates/pre-commit"
-PULL_ONLY=false
-
-# ---- Parse arguments --------------------------------------------------------
-
-for arg in "$@"; do
-  case "$arg" in
-    --pull-only) PULL_ONLY=true ;;
-    *) echo "ERROR: Unknown argument: $arg" >&2; exit 1 ;;
-  esac
-done
-
-# Config files to pull from gautada/cicd:/templates/pre-commit/
-CONFIG_FILES=(
-  ".flake8"
-  ".hadolint.yaml"
-  ".htmlhintrc"
-  ".jscpd.json"
-  ".markdownlint.yaml"
-  ".pre-commit-config.yaml"
-  "pyproject.toml"
-  ".shellcheckrc"
-  ".sqlfluff"
-  ".yamllint.yaml"
-  "pyproject.toml"
+readonly DEFAULT_REF="main"
+readonly REPOSITORY="gautada/cicd"
+readonly CONFIG_FILES=(
+  .flake8 .hadolint.yaml .htmlhintrc .jscpd.json .markdownlint.yaml
+  .pre-commit-config.yaml .shellcheckrc .sqlfluff .yamllint.yaml pyproject.toml
 )
 
-# ---- Preflight checks -------------------------------------------------------
+pull_only=false
+sync_project=false
+cicd_ref="${CICD_REF:-${DEFAULT_REF}}"
 
-# Verify git repo
-if ! git rev-parse --show-toplevel &>/dev/null; then
-  echo "ERROR: Not inside a git repository." >&2
-  exit 1
-fi
+usage() {
+  cat <<'EOF'
+Usage: pre-commit [--pull-only] [--sync-project] [--ref REF]
 
-REPO_ROOT=$(git rev-parse --show-toplevel)
-if [[ "$PWD" != "$REPO_ROOT" ]]; then
-  echo "ERROR: Run from the root of the git checkout." >&2
-  echo "       Expected: $REPO_ROOT" >&2
-  exit 1
-fi
+Downloads the shared, gitignored lint configuration and runs pre-commit.
+  --pull-only     Download lint configuration but do not install/run hooks.
+  --sync-project  Also replace the canonical consumer workflow and .gitignore.
+  --ref REF       Download from a branch, tag, or commit (default: main).
+EOF
+}
 
-# Verify curl is available
-if ! command -v curl &>/dev/null; then
-  echo "ERROR: curl is required but not found." >&2
-  exit 1
-fi
+while (($#)); do
+  case "$1" in
+    --pull-only) pull_only=true ;;
+    --sync-project) sync_project=true ;;
+    --ref)
+      shift
+      [[ $# -gt 0 ]] || { echo "ERROR: --ref requires a value" >&2; exit 2; }
+      cicd_ref="$1"
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "ERROR: Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
 
-# ---- Enforce canonical .github/workflows/contaier.yaml -------------------------------------------
+[[ "${cicd_ref}" =~ ^[A-Za-z0-9._/-]+$ ]] || {
+  echo "ERROR: Unsafe ref: ${cicd_ref}" >&2
+  exit 2
+}
 
-echo "==> Syncing canonical .github/workflows/container template..."
-mkdir -p .github/workflows
-rm -fv .github/workflows/container.yaml
-curl -sSfL \
-https://raw.githubusercontent.com/gautada/cicd/refs/heads/main/templates/cicd/container.yaml \
--o .github/workflows/container.yaml
-echo ""
-
-# ---- Enforce canonical .gitignore -------------------------------------------
-
-echo "==> Syncing canonical .gitignore template..."
-rm -fv .gitignore
-curl -sSfL \
-https://raw.githubusercontent.com/gautada/cicd/refs/heads/main/templates/gitignore/.gitignore \
--o .gitignore
-echo ""
-
-# ---- Sync config files from gautada/cicd ------------------------------------
-
-echo "==> Syncing pre-commit config from gautada/cicd/templates/pre-commit..."
-for f in "${CONFIG_FILES[@]}"; do
-  echo "    ↓ $f"
-  if ! curl -sSfL "$CICD_RAW/$f" -o "$f"; then
-    echo "ERROR: Failed to download $f from $CICD_RAW" >&2
+for command in git curl mktemp; do
+  command -v "${command}" >/dev/null 2>&1 || {
+    echo "ERROR: Required command not found on PATH: ${command}" >&2
     exit 1
+  }
+done
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "ERROR: Run this command inside a Git repository." >&2
+  exit 1
+}
+repo_root="$(cd "${repo_root}" && pwd -P)"
+[[ "$(pwd -P)" == "${repo_root}" ]] || {
+  echo "ERROR: Run from repository root: ${repo_root}" >&2
+  exit 1
+}
+
+raw_base="https://raw.githubusercontent.com/${REPOSITORY}/${cicd_ref}"
+stage_dir="$(mktemp -d "${TMPDIR:-/tmp}/cicd-precommit.XXXXXX")"
+trap 'rm -rf "${stage_dir}"' EXIT
+
+download() {
+  local source_path="$1" destination="$2"
+  curl --fail --silent --show-error --location \
+    --retry 3 --retry-delay 1 --retry-connrefused \
+    "${raw_base}/${source_path}" --output "${destination}"
+}
+
+echo "==> Downloading lint configuration from ${REPOSITORY}@${cicd_ref}"
+for file in "${CONFIG_FILES[@]}"; do
+  download "templates/pre-commit/${file}" "${stage_dir}/${file}"
+done
+
+managed_file="$(git rev-parse --git-path cicd-managed-files)"
+exclude_file="$(git rev-parse --git-path info/exclude)"
+mkdir -p "$(dirname "${managed_file}")" "$(dirname "${exclude_file}")"
+touch "${managed_file}" "${exclude_file}"
+
+for file in "${CONFIG_FILES[@]}"; do
+  if git ls-files --error-unmatch -- "${file}" >/dev/null 2>&1; then
+    echo "    = ${file} is tracked; preserving the project-owned file"
+  elif [[ -e "${file}" ]] && ! grep -Fqx -- "${file}" "${managed_file}"; then
+    echo "    = ${file} already exists; preserving the project-owned file"
+  else
+    install -m 0644 "${stage_dir}/${file}" "${file}"
+    grep -Fqx -- "${file}" "${managed_file}" || printf '%s\n' "${file}" >> "${managed_file}"
+    grep -Fqx -- "/${file}" "${exclude_file}" || printf '/%s\n' "${file}" >> "${exclude_file}"
+    echo "    + ${file}"
   fi
 done
-echo ""
 
-# ---- Exit early if --pull-only ----------------------------------------------
+if [[ "${sync_project}" == true ]]; then
+  echo "==> Synchronizing explicitly requested project templates"
+  mkdir -p .github/workflows
+  download templates/cicd/container.yaml "${stage_dir}/container.yaml"
+  download templates/gitignore/.gitignore "${stage_dir}/gitignore"
+  install -m 0644 "${stage_dir}/container.yaml" .github/workflows/container.yaml
+  install -m 0644 "${stage_dir}/gitignore" .gitignore
+fi
 
-if [[ "$PULL_ONLY" == true ]]; then
-  echo "==> Pull complete. Skipping install and run (--pull-only)."
+if [[ "${pull_only}" == true ]]; then
+  echo "==> Configuration downloaded; install and lint skipped."
   exit 0
 fi
 
-# ---- Install/update hooks ---------------------------------------------------
-
-# Verify pre-commit is installed
-if ! command -v pre-commit &>/dev/null; then
+command -v pre-commit >/dev/null 2>&1 || {
   echo "ERROR: pre-commit is not installed." >&2
-  echo "       Install via: pipx install --global pre-commit" >&2
+  echo "Install it with 'pipx install pre-commit' and rerun this command." >&2
   exit 1
-fi
+}
 
-echo "==> Installing pre-commit hooks..."
+echo "==> Installing the repository hook"
 pre-commit install
-echo ""
-
-# ---- Run linters ------------------------------------------------------------
-
-echo "==> Running pre-commit on all files..."
+echo "==> Running all configured checks"
 pre-commit run --all-files

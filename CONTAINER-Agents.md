@@ -25,4 +25,4 @@ or updates the `dev` to `main` promotion PR. Never merge that promotion PR
 without explicit human authorization.
 
 Canonical documentation:
-https://github.com/gautada/cicd/blob/main/AI.md
+[AI agent instructions](https://github.com/gautada/cicd/blob/main/AI.md)
