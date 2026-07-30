@@ -40,6 +40,7 @@ jobs:
 
       - name: Registry Login
         run: |
+          which podman
           echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
             --username "${{ secrets.REGISTRY_USERNAME }}" \
             --password-stdin ${{ inputs.registry_name }}
