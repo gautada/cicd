@@ -2,6 +2,8 @@ FROM docker.io/library/alpine:3.22
 
 ARG GIT_COMMIT=unknown
 
+# The generated script must preserve command substitution for container runtime.
+# hadolint ignore=SC2016
 RUN printf '%s\n' \
       '#!/bin/sh' \
       'set -eu' \
