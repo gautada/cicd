@@ -46,8 +46,10 @@ if rg -n 'actions/checkout@v[1-5]|anchore/scan-action@v[1-6]' .github/workflows;
   exit 1
 fi
 
-rg -q 'actions/checkout@v6' .github/workflows/ci-linter.yaml
-rg -q 'anchore/scan-action@v7' .github/workflows/ci-deep-scan.yaml
+rg -q 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6' \
+  .github/workflows/ci-linter.yaml
+rg -q 'anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2  # v7' \
+  .github/workflows/ci-deep-scan.yaml
 
 for command in container-test container-version; do
   rg -q "/usr/bin/${command}" Containerfile

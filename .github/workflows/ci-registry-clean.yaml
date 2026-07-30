@@ -24,12 +24,13 @@ jobs:
     timeout-minutes: 10
     environment: ${{ inputs.environment_name }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       - name: Validate configuration
         env:
           REGISTRY: ${{ inputs.registry_name }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
           KEEP: ${{ inputs.keep_per_architecture }}
         run: |
           set -euo pipefail
@@ -38,7 +39,7 @@ jobs:
             exit 2
           }
           [[ -n "${REGISTRY_USERNAME}" && -n "${REGISTRY_TOKEN}" ]] || {
-            echo "::error::REGISTRY_USERNAME and REGISTRY_TOKEN are required in '${{ inputs.environment_name }}'"
+            echo "::error::REGISTRY_USERNAME and REGISTRY_TOKEN are required in '${ENVIRONMENT_NAME}'"
             exit 2
           }
           [[ "${KEEP}" =~ ^[0-9]+$ ]] || { echo "::error::keep_per_architecture must be non-negative"; exit 2; }
