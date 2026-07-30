@@ -66,8 +66,18 @@ workflow and `.gitignore`.
 
 During development of this repository, change every reusable workflow suffix
 from `@main` to the test branch, such as `@ai`. Restore a stable tag or commit
-before production use. Pinning consumers to a reviewed commit SHA gives the
-strongest protection against upstream workflow changes.
+before production use. The linter also needs its configuration revision passed
+explicitly because reusable workflows cannot infer their own branch:
+
+```yaml
+lint:
+  uses: gautada/cicd/.github/workflows/ci-linter.yaml@ai
+  with:
+    cicd_ref: ai
+```
+
+Pinning consumers to a reviewed commit SHA gives the strongest protection
+against upstream workflow changes.
 
 ### 2. Configure the GitHub Environment
 

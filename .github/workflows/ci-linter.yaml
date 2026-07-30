@@ -32,7 +32,7 @@ jobs:
       - name: Pull ephemeral linter configuration
         env:
           CICD_REF: ${{ inputs.cicd_ref }}
-        run: .cicd-tooling/bin/pre-commit --pull-only --ref "${CICD_REF}"
+        run: bash .cicd-tooling/bin/pre-commit --pull-only --ref "${CICD_REF}"
       - name: Remove tooling checkout from lint scope
         run: rm -rf .cicd-tooling
       - name: Run Super Linter
