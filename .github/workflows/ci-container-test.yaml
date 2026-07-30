@@ -1,112 +1,90 @@
 ---
 name: ci-container-test
-# Reusable workflow that validates a published container image by running its
-# built-in test suite (/usr/bin/container-test).
-#
-# How it works:
-#   1. Pull the :dev image from the registry
-#   2. Start the container in detached mode so s6 services initialise normally
-#   3. Execute /usr/bin/container-test inside the running container
-#      - container-test is a symlink to container-health, which runs every
-#        script in /etc/container/health.d/ and returns 0 only if all pass
-#   4. Capture logs if test fails
-#   5. Stop and remove the container regardless of test outcome (Cleanup Container step)
-#   6. Fail the workflow if container-test exited non-zero
 
 on:
   workflow_call:
     inputs:
-      registry_name:
-        description: "Registry to publish images"
+      registry_name: {description: Registry hostname, type: string, default: docker.io}
+      environment_name:
+        description: GitHub Environment containing registry secrets
         type: string
-        required: false
-        default: "docker.io"
+        default: container-registry
+      image_tag: {description: Published image tag to test, type: string, default: dev}
+      startup_timeout: {description: Seconds allowed for container startup, type: number, default: 60}
     secrets:
-      REGISTRY_USERNAME:
-        required: true
-      REGISTRY_TOKEN:
-        required: true
+      REGISTRY_USERNAME: {required: false}
+      REGISTRY_TOKEN: {required: false}
+
+permissions:
+  contents: read
 
 jobs:
-  ci:
-    name: "Test Container"
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.environment_name }}
     steps:
-      - name: Checkout
-        # Check out the calling repository so pwd-derived names resolve correctly
-        uses: actions/checkout@v5
-
-      - name: Install Tools
-        # Install podman for container lifecycle management.
-        # Installed explicitly here (as in ci-podman-build.yaml) rather than
-        # relying on runner pre-installation to ensure a known, consistent version.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Preflight and locate Podman
+        env:
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          sudo /usr/bin/apt-get update
-          sudo /usr/bin/apt-get install --yes podman
-
-      - name: Registry Login
-        # Authenticate to the registry so the pull step can access private images
+          set -euo pipefail
+          missing=()
+          [[ -n "${REGISTRY_USERNAME}" ]] || missing+=(REGISTRY_USERNAME)
+          [[ -n "${REGISTRY_TOKEN}" ]] || missing+=(REGISTRY_TOKEN)
+          if ((${#missing[@]})); then
+            echo "::error::Missing GitHub Environment secrets: ${missing[*]}."
+            echo "::error::Configure environment '${ENVIRONMENT_NAME}'."
+            exit 2
+          fi
+          sudo apt-get update
+          sudo apt-get install --yes podman
+          podman_path="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
+          echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
+          "${podman_path}" --version
+      - name: Log in and pull image
+        env:
+          REGISTRY: ${{ inputs.registry_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          echo "${{ secrets.REGISTRY_TOKEN }}" | /usr/bin/podman login \
-            --username "${{ secrets.REGISTRY_USERNAME }}" \
-            --password-stdin ${{ inputs.registry_name }}
-
-      - name: "Pull Container Image"
-        # Pull the :dev tag that was published by the preceding ci-podman-publish job.
-        # Pulling explicitly before run gives a clearer error message on pull failure
-        # and avoids mixing pull output with test output.
-        # yamllint disable rule:line-length
+          set -euo pipefail
+          printf '%s' "${REGISTRY_TOKEN}" | "${PODMAN}" login "${REGISTRY}" \
+            --username "${REGISTRY_USERNAME}" --password-stdin
+          image="${REGISTRY}/${REGISTRY_USERNAME}/${GITHUB_REPOSITORY#*/}:${IMAGE_TAG}"
+          echo "IMAGE=${image}" >> "${GITHUB_ENV}"
+          "${PODMAN}" pull "${image}"
+      - name: Run built-in container tests
+        env:
+          STARTUP_TIMEOUT: ${{ inputs.startup_timeout }}
         run: |
-          NS="${{ secrets.REGISTRY_USERNAME }}"
-          REPO="$(pwd | awk -F'/' '{print $NF}')"
-          IMG="${{ inputs.registry_name }}/${NS}/${REPO}:dev"
-          /usr/bin/podman pull "${IMG}"
-        # yamllint enable rule:line-length
-
-      - name: "Test Container"
-        # Start the container and run its built-in test suite.
-        #
-        # /usr/bin/container-test is a symlink to container-health, which
-        # iterates /etc/container/health.d/ and returns 0 only if all checks pass.
-        run: |
-          REPO="$(pwd | awk -F'/' '{print $NF}')"
-          IMG="${{ inputs.registry_name }}/${{ secrets.REGISTRY_USERNAME }}/${REPO}:dev"
-
-          # Ensure .env exists (may be empty); podman requires the file to be present
-          touch .env
-
-          # Start the container in detached mode; s6-svscan initialises services
-          /usr/bin/podman run \
-            --env-file .env \
-            --detach \
-            --name "${REPO}" \
-            "${IMG}"
-
-          # Wait for s6 service supervisor to finish initialising container processes
-          sleep 15
-
-          # Log the started container for debugging purpose
-          /usr/bin/podman logs --names "${REPO}"
-
-          # Execute the test suite
-          /usr/bin/podman exec "${REPO}" /usr/bin/container-test
-
-      - name: "Capture Container Logs on Failure"
-        # If the preceding test fails, capture the logs from all running/stopped
-        # containers to the workflow console to assist in debugging.
-        if: failure()
-        run: |
-          for container in $(/usr/bin/podman ps -a --format "{{.Names}}"); do
-            echo "::group::Container Logs: ${container}"
-            /usr/bin/podman logs "${container}"
-            echo "::endgroup::"
+          set -euo pipefail
+          name="cicd-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          env_file="$(mktemp)"
+          echo "CONTAINER_NAME=${name}" >> "${GITHUB_ENV}"
+          trap 'rm -f "${env_file}"' EXIT
+          "${PODMAN}" run --env-file "${env_file}" --detach --name "${name}" "${IMAGE}"
+          deadline=$((SECONDS + STARTUP_TIMEOUT))
+          until "${PODMAN}" exec "${name}" /usr/bin/container-test; do
+            if ((SECONDS >= deadline)); then
+              echo "::error::Container tests did not pass within ${STARTUP_TIMEOUT}s"
+              exit 1
+            fi
+            if [[ "$("${PODMAN}" inspect --format '{{.State.Running}}' "${name}")" != true ]]; then
+              echo "::error::Container exited before its tests passed"
+              exit 1
+            fi
+            sleep 5
           done
-
-      - name: "Cleanup Container"
-        # Ensure the test container is stopped and removed regardless of outcome.
-        # This replaces the bash EXIT trap to allow log capture in preceding steps.
-        if: always()
+      - name: Capture logs on failure
+        if: failure() && env.CONTAINER_NAME != ''
         run: |
-          REPO="$(pwd | awk -F'/' '{print $NF}')"
-          /usr/bin/podman stop "${REPO}" || true
-          /usr/bin/podman rm -f "${REPO}" || true
+          "${PODMAN}" logs "${CONTAINER_NAME}" || true
+      - name: Clean up container
+        if: always() && env.CONTAINER_NAME != ''
+        run: |
+          "${PODMAN}" rm --force "${CONTAINER_NAME}" || true

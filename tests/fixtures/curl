@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=''
+url=''
+while (($#)); do
+  case "$1" in
+    --output|-o) shift; output="$1" ;;
+    http*) url="$1" ;;
+  esac
+  shift
+done
+[[ -n "${output}" && -n "${url}" && -n "${CICD_SOURCE:-}" ]]
+relative="${url#*gautada/cicd/}"
+relative="${relative#*/}"
+cp "${CICD_SOURCE}/${relative}" "${output}"

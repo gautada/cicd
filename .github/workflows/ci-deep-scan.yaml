@@ -5,57 +5,84 @@ on:
   workflow_call:
     inputs:
       image_ref:
-        description: "Built image reference to scan (optional)"
+        description: Optional public or already-authenticated image to scan
         type: string
-        required: false
+        default: ''
+      fail_on_severity:
+        description: Minimum Grype severity that fails the job
+        type: string
+        default: high
 
 permissions:
   contents: read
   security-events: write
 
 jobs:
-  deep-scan:
-    name: Semgrep + Syft/Grype
+  semgrep:
+    name: Semgrep SAST
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
+    container:
+      image: semgrep/semgrep
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      # Semgrep action wrapper is old/deprecated-ish; keep for now if working,
-      # but do not rely on it to upload SARIF while debugging Grype.
-      - name: Semgrep SAST
-        uses: returntocorp/semgrep-action@v1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Scan source
+        run: semgrep scan --config p/ci --error --sarif --output semgrep.sarif .
+      - name: Upload Semgrep SARIF
+        if: >-
+          always() && (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4
         with:
-          config: p/ci
-          generateSarif: true
-          uploadSarif: true
+          sarif_file: semgrep.sarif
+          category: semgrep
 
-      - name: Generate SBOM with Syft
-        id: syft
-        uses: anchore/sbom-action@v0
+  supply-chain:
+    name: SBOM and Grype vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0
         with:
           path: .
           artifact-name: sbom-spdx.json
           format: spdx-json
-
-      - name: Grype scan filesystem
-        id: grype
-        uses: anchore/scan-action@v6
+      - name: Scan repository filesystem
+        if: inputs.image_ref == ''
+        id: filesystem-scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2  # v7
         with:
           path: .
           output-format: sarif
-          fail-build: false
-
-      - name: Debug SARIF path
-        if: always()
-        run: |
-          echo "Grype SARIF: ${{ steps.grype.outputs.sarif }}"
-          ls -lh "${{ steps.grype.outputs.sarif }}"
-          python -m json.tool "${{ steps.grype.outputs.sarif }}" > /dev/null
-
-      - name: Upload Grype SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v4
+          fail-build: true
+          severity-cutoff: ${{ inputs.fail_on_severity }}
+      - name: Scan container image
+        if: inputs.image_ref != ''
+        id: image-scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2  # v7
         with:
-          sarif_file: ${{ steps.grype.outputs.sarif }}
+          image: ${{ inputs.image_ref }}
+          output-format: sarif
+          fail-build: true
+          severity-cutoff: ${{ inputs.fail_on_severity }}
+      - name: Select SARIF result
+        if: always()
+        env:
+          FILESYSTEM_SARIF: ${{ steps.filesystem-scan.outputs.sarif }}
+          IMAGE_SARIF: ${{ steps.image-scan.outputs.sarif }}
+        run: |
+          set -euo pipefail
+          sarif="${FILESYSTEM_SARIF:-${IMAGE_SARIF:-}}"
+          [[ -n "${sarif}" && -f "${sarif}" ]] || { echo "::error::Grype did not produce SARIF"; exit 1; }
+          echo "GRYPE_SARIF=${sarif}" >> "${GITHUB_ENV}"
+      - name: Upload Grype SARIF
+        if: >-
+          always() && env.GRYPE_SARIF != '' &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4
+        with:
+          sarif_file: ${{ env.GRYPE_SARIF }}
+          category: grype

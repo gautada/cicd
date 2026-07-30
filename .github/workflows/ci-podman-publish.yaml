@@ -1,95 +1,83 @@
 ---
 name: ci-podman-publish
-# Pulls together the manifest and pushes the dev tagged image to registry
 
 on:
   workflow_call:
     inputs:
-      architectures:
-        description: "List of architectures"
+      architectures: {description: JSON array of architectures, type: string, required: true}
+      tag_dev: {description: Destination manifest tag, type: string, default: dev}
+      tag_build: {description: Intermediate tag prefix, type: string, default: build}
+      registry_name: {description: Registry hostname, type: string, default: docker.io}
+      environment_name:
+        description: GitHub Environment containing registry secrets
         type: string
-        required: true
-      tag_dev:
-        description: "Tag for development container"
-        type: string
-        required: false
-        default: "dev"
-      tag_build:
-        description: "Tag for build containers"
-        type: string
-        required: false
-        default: "build"
-      registry_name:
-        description: "Registry to publish images"
-        type: string
-        required: false
-        default: "docker.io"
+        default: container-registry
     secrets:
-      REGISTRY_USERNAME:
-        required: true
-      REGISTRY_TOKEN:
-        required: true
+      REGISTRY_USERNAME: {required: false}
+      REGISTRY_TOKEN: {required: false}
+
+permissions:
+  contents: read
 
 jobs:
-  ci:
-    name: "Publish Development Images"
+  publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment_name }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Registry Login
-        run: |
-          which podman
-          echo "${{ secrets.REGISTRY_TOKEN }}" | podman login \
-            --username "${{ secrets.REGISTRY_USERNAME }}" \
-            --password-stdin ${{ inputs.registry_name }}
-
-      - name: Resolve version tag
-        id: version
-        shell: bash
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Preflight and locate tools
+        env:
+          ARCHITECTURES: ${{ inputs.architectures }}
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
-          version=""
-          if [ -f VERSION ]; then
-            version="$(tr -d ' \r\n' < VERSION)"
-          elif [ -x ./version.sh ]; then
-            version="$(./version.sh | head -n1 | tr -d ' \r\n')"
+          missing=()
+          [[ -n "${REGISTRY_USERNAME}" ]] || missing+=(REGISTRY_USERNAME)
+          [[ -n "${REGISTRY_TOKEN}" ]] || missing+=(REGISTRY_TOKEN)
+          if ((${#missing[@]})); then
+            echo "::error::Missing GitHub Environment secrets: ${missing[*]}."
+            echo "::error::Configure environment '${ENVIRONMENT_NAME}'."
+            exit 2
           fi
-          if [ -z "$version" ]; then
-            version="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-          fi
-          if [ -z "$version" ]; then
-            version="v$(git rev-parse --short HEAD)"
-          fi
-          version="$(printf '%s' "$version" | sed 's/[^A-Za-z0-9._-]/-/g')"
-          echo "value=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Publish Image
-        # yamllint disable rule:line-length
+          jq -e \
+            'type == "array" and length > 0 and all(.[]; . == "amd64" or . == "arm64")' \
+            <<< "${ARCHITECTURES}" >/dev/null || {
+            echo "::error::architectures must be a non-empty JSON array containing amd64 and/or arm64"
+            exit 2
+          }
+          podman_path="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
+          echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
+          "${podman_path}" --version
+      - name: Log in to registry
+        env:
+          REGISTRY: ${{ inputs.registry_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          set -x
-          VERSION_TAG="${{ steps.version.outputs.value }}"
-          GIT_VERSION="$(/usr/bin/git rev-parse --short HEAD)"
-          CONTAINER="${{ inputs.registry_name }}"
-          CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}/"
-          CONTAINER+="$(pwd | awk -F'/' '{print $NF}')"
-          MANIFEST="${CONTAINER}:${{ inputs.tag_dev }}"
-          podman manifest create "${MANIFEST}"
-          for architecture in $(echo '${{ inputs.architectures }}' | jq -r '.[]'); do
-           PART="${CONTAINER}:${{ inputs.tag_build }}"
-           PART+="-${architecture}"
-           PART+="-${GIT_VERSION}"
-           BUILD="${CONTAINER}:${{ inputs.tag_build }}-${architecture}"
-           podman pull "${PART}"
-           podman tag "${PART}" "${BUILD}"
-           podman push "${BUILD}"
-           podman manifest add "${MANIFEST}" "${BUILD}"
-          done # <<< "${{ inputs.architectures }}"
-          DEV_DEST="docker://${CONTAINER}:${{ inputs.tag_dev }}"
-          podman manifest push "${MANIFEST}" "${DEV_DEST}"
-          if [ -n "${VERSION_TAG}" ]; then
-            VERSION_DEST="docker://${CONTAINER}:${VERSION_TAG}"
-            podman manifest push "${MANIFEST}" "${VERSION_DEST}"
-          fi
-        # yamllint enable rule:line-length
+          printf '%s' "${REGISTRY_TOKEN}" | "${PODMAN}" login "${REGISTRY}" \
+            --username "${REGISTRY_USERNAME}" --password-stdin
+      - name: Assemble and publish manifest
+        env:
+          ARCHITECTURES: ${{ inputs.architectures }}
+          REGISTRY: ${{ inputs.registry_name }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          TAG_BUILD: ${{ inputs.tag_build }}
+          DESTINATION_TAG: ${{ inputs.tag_dev }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse --short HEAD)"
+          repo="${GITHUB_REPOSITORY#*/}"
+          container="${REGISTRY}/${REGISTRY_USERNAME}/${repo}"
+          manifest="${container}:${DESTINATION_TAG}"
+          "${PODMAN}" manifest rm "${manifest}" 2>/dev/null || true
+          "${PODMAN}" manifest create "${manifest}"
+          while IFS= read -r architecture; do
+            source="${container}:${TAG_BUILD}-${architecture}-${sha}"
+            "${PODMAN}" pull "${source}"
+            "${PODMAN}" manifest add "${manifest}" "${source}"
+          done < <(jq -r '.[]' <<< "${ARCHITECTURES}")
+          "${PODMAN}" manifest push --all "${manifest}" "docker://${manifest}"
+          echo "Published ${manifest}" >> "${GITHUB_STEP_SUMMARY}"
