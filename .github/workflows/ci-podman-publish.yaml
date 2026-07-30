@@ -75,21 +75,21 @@ jobs:
           CONTAINER+="/${{ secrets.REGISTRY_USERNAME }}/"
           CONTAINER+="$(pwd | awk -F'/' '{print $NF}')"
           MANIFEST="${CONTAINER}:${{ inputs.tag_dev }}"
-          /usr/bin/podman manifest create "${MANIFEST}"
+          podman manifest create "${MANIFEST}"
           for architecture in $(echo '${{ inputs.architectures }}' | jq -r '.[]'); do
            PART="${CONTAINER}:${{ inputs.tag_build }}"
            PART+="-${architecture}"
            PART+="-${GIT_VERSION}"
            BUILD="${CONTAINER}:${{ inputs.tag_build }}-${architecture}"
-           /usr/bin/podman pull "${PART}"
-           /usr/bin/podman tag "${PART}" "${BUILD}"
-           /usr/bin/podman push "${BUILD}"
-           /usr/bin/podman manifest add "${MANIFEST}" "${BUILD}"
+           podman pull "${PART}"
+           podman tag "${PART}" "${BUILD}"
+           podman push "${BUILD}"
+           podman manifest add "${MANIFEST}" "${BUILD}"
           done # <<< "${{ inputs.architectures }}"
           DEV_DEST="docker://${CONTAINER}:${{ inputs.tag_dev }}"
-          /usr/bin/podman manifest push "${MANIFEST}" "${DEV_DEST}"
+          podman manifest push "${MANIFEST}" "${DEV_DEST}"
           if [ -n "${VERSION_TAG}" ]; then
             VERSION_DEST="docker://${CONTAINER}:${VERSION_TAG}"
-            /usr/bin/podman manifest push "${MANIFEST}" "${VERSION_DEST}"
+            podman manifest push "${MANIFEST}" "${VERSION_DEST}"
           fi
         # yamllint enable rule:line-length
