@@ -50,6 +50,11 @@ rg -q 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6' \
 rg -q 'anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2  # v7' \
   .github/workflows/ci-deep-scan.yaml
 
+rg -Fq 'apt-get install --yes podman crun conmon' \
+  .github/workflows/cd-tag-latest.yaml
+rg -Fq 'dpkg-query --listfiles podman' \
+  .github/workflows/cd-tag-latest.yaml
+
 for command in container-test container-version; do
   rg -q "/usr/bin/${command}" Containerfile
 done

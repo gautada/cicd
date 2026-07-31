@@ -192,8 +192,11 @@ anything unless `dry_run: false` is explicitly supplied.
 ## Tool discovery and failures
 
 Workflows install Podman when necessary and resolve it with `command -v`.
-They store the discovered executable in `PODMAN`, print its version, and never
-assume `/usr/bin/podman` or `/usr/local/bin/podman`.
+The release workflow selects the executable owned by the installed package so
+it remains compatible with the installed OCI runtime even when the runner has
+another Podman earlier on `PATH`. Workflows store the discovered executable in
+`PODMAN`, print its version, and never assume `/usr/bin/podman` or
+`/usr/local/bin/podman`.
 
 Registry workflows validate secrets before installing packages, pulling, or
 building. Common errors are:
