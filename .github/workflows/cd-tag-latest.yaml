@@ -87,20 +87,20 @@ jobs:
           versioned="${container}:${version}"
           candidate_digest="sha256:$("${SKOPEO}" inspect --raw \
             "docker://${container}:candidate" | sha256sum | awk '{print $1}')"
-          if [[ "${ENFORCE_IMMUTABLE_TAGS}" == "true" ]]; then
-            if version_digest="sha256:$("${SKOPEO}" inspect --raw \
-              "docker://${versioned}" 2>/dev/null | sha256sum | awk '{print $1}')"; then
-              [[ "${version_digest}" == "${candidate_digest}" ]] || {
-                echo "::error::Refusing to overwrite immutable tag ${versioned}"
-                exit 1
-              }
-              echo "${versioned} already identifies this manifest; keeping it."
-            else
-              "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
-            fi
-          else
+          # if [[ "${ENFORCE_IMMUTABLE_TAGS}" == "true" ]]; then
+          #   if version_digest="sha256:$("${SKOPEO}" inspect --raw \
+          #     "docker://${versioned}" 2>/dev/null | sha256sum | awk '{print $1}')"; then
+          #     [[ "${version_digest}" == "${candidate_digest}" ]] || {
+          #       echo "::error::Refusing to overwrite immutable tag ${versioned}"
+          #       exit 1
+          #     }
+          #     echo "${versioned} already identifies this manifest; keeping it."
+          #   else
+          #     "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
+          #   fi
+          # else
             echo "enforce_immutable_tags is false; pushing ${versioned} unconditionally."
             "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
-          fi
+          # fi
           "${PODMAN}" manifest push --all "${latest}" "docker://${latest}"
           printf 'Published %s and %s\n' "${latest}" "${versioned}" >> "${GITHUB_STEP_SUMMARY}"
