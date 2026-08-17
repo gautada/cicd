@@ -8,6 +8,7 @@ on:
       registry_name: {description: Registry hostname, type: string, default: docker.io}
       tag_build: {description: Intermediate tag prefix, type: string, default: build}
       environment_name: {description: Protected GitHub Environment, type: string, default: container-registry}
+      enforce_immutable_tags: {description: "Refuse to overwrite an existing version tag with different content", type: boolean, default: true} # yamllint disable-line rule:line-length
     secrets:
       REGISTRY_USERNAME: {required: false}
       REGISTRY_TOKEN: {required: false}
@@ -29,7 +30,7 @@ jobs:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          set -euo pipefail
+          set -exuo pipefail
           missing=()
           [[ -n "${REGISTRY_USERNAME}" ]] || missing+=(REGISTRY_USERNAME)
           [[ -n "${REGISTRY_TOKEN}" ]] || missing+=(REGISTRY_TOKEN)
@@ -60,40 +61,63 @@ jobs:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
           TAG_BUILD: ${{ inputs.tag_build }}
+          ENFORCE_IMMUTABLE_TAGS: ${{ inputs.enforce_immutable_tags }}
         run: |
-          set -euo pipefail
+          set -exuo pipefail
+          echo "0"
           printf '%s' "${REGISTRY_TOKEN}" | "${PODMAN}" login "${REGISTRY}" \
             --username "${REGISTRY_USERNAME}" --password-stdin
+          echo "1"
           container="${REGISTRY}/${REGISTRY_USERNAME}/${GITHUB_REPOSITORY#*/}"
-          sha="$(git rev-parse --short HEAD)"
-          first_arch="$(jq -r '.[0]' <<< "${ARCHITECTURES}")"
-          first_image="${container}:${TAG_BUILD}-${first_arch}-${sha}"
-          "${PODMAN}" pull "${first_image}"
-          version="$("${PODMAN}" run --rm --entrypoint /usr/bin/container-version "${first_image}" | tr -d '[:space:]')"
+          echo "2"
+          "${PODMAN}" pull "${container}:candidate"
+          echo "3 $?"
+          "${PODMAN}" run --rm --detach --name candidate "${container}:candidate"
+          echo "4 $?"
+          version="$("${PODMAN}" exec --interactive --tty candidate /usr/bin/container-version | tr -d '[:space:]')"
+          echo "5 $?"
           [[ "${version}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || {
             echo "::error::container-version returned an empty or invalid registry tag: '${version}'"
             exit 2
           }
-          latest="${container}:latest"
-          "${PODMAN}" manifest rm "${latest}" 2>/dev/null || true
-          "${PODMAN}" manifest create "${latest}"
-          while IFS= read -r architecture; do
-            image="${container}:${TAG_BUILD}-${architecture}-${sha}"
-            "${PODMAN}" pull "${image}"
-            "${PODMAN}" manifest add "${latest}" "${image}"
-          done < <(jq -r '.[]' <<< "${ARCHITECTURES}")
-          versioned="${container}:${version}"
-          candidate_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
-            "docker://${container}:candidate")"
-          if version_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
-            "docker://${versioned}" 2>/dev/null)"; then
-            [[ "${version_digest}" == "${candidate_digest}" ]] || {
-              echo "::error::Refusing to overwrite immutable tag ${versioned}"
-              exit 1
-            }
-            echo "${versioned} already identifies this manifest; keeping it."
-          else
-            "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
-          fi
-          "${PODMAN}" manifest push --all "${latest}" "docker://${latest}"
-          printf 'Published %s and %s\n' "${latest}" "${versioned}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "6"
+          "${PODMAN}" stop candidate
+          echo "7"
+          "${PODMAN}" "${container}:candidate" tag "${container}:latest"
+          "${PODMAN}" "${container}:candidate" tag "${container}:${version}"
+          "${PODMAN}" manifest push --all "${container}:${version}"
+          "${PODMAN}" manifest push --all "${container}:latest"
+
+
+          # sha="$(git rev-parse --short HEAD)"
+          # first_arch="$(jq -r '.[0]' <<< "${ARCHITECTURES}")"
+          # first_image="${container}:${TAG_BUILD}-${first_arch}-${sha}"
+          # image=
+          # latest="${container}:latest"
+          # "${PODMAN}" manifest rm "${latest}" 2>/dev/null || true
+          # "${PODMAN}" manifest create "${latest}"
+          # while IFS= read -r architecture; do
+          #   image="${container}:${TAG_BUILD}-${architecture}-${sha}"
+          #   "${PODMAN}" pull "${image}"
+          #   "${PODMAN}" manifest add "${latest}" "${image}"
+          # done < <(jq -r '.[]' <<< "${ARCHITECTURES}")
+          # versioned="${container}:${version}"
+          # candidate_digest="sha256:$("${SKOPEO}" inspect --raw \
+          #   "docker://${container}:candidate" | sha256sum | awk '{print $1}')"
+          # if [[ "${ENFORCE_IMMUTABLE_TAGS}" == "true" ]]; then
+          #   if version_digest="sha256:$("${SKOPEO}" inspect --raw \
+          #     "docker://${versioned}" 2>/dev/null | sha256sum | awk '{print $1}')"; then
+          #     [[ "${version_digest}" == "${candidate_digest}" ]] || {
+          #       echo "::error::Refusing to overwrite immutable tag ${versioned}"
+          #       exit 1
+          #     }
+          #     echo "${versioned} already identifies this manifest; keeping it."
+          #   else
+          #     "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
+          #   fi
+          # else
+          #   echo "enforce_immutable_tags is false; pushing ${versioned} unconditionally."
+          #   "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
+          # fi
+          # "${PODMAN}" manifest push --all "${latest}" "docker://${latest}"
+          # printf 'Published %s and %s\n' "${latest}" "${versioned}" >> "${GITHUB_STEP_SUMMARY}"
