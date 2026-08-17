@@ -64,18 +64,25 @@ jobs:
           ENFORCE_IMMUTABLE_TAGS: ${{ inputs.enforce_immutable_tags }}
         run: |
           set -exuo pipefail
+          echo "0"
           printf '%s' "${REGISTRY_TOKEN}" | "${PODMAN}" login "${REGISTRY}" \
             --username "${REGISTRY_USERNAME}" --password-stdin
+          echo "1"
           container="${REGISTRY}/${REGISTRY_USERNAME}/${GITHUB_REPOSITORY#*/}"
+          echo "2"
           "${PODMAN}" pull "${container}:candidate"
+          echo "3 $?"
           "${PODMAN}" run --rm --detach --name candidate "${container}:candidate"
+          echo "4 $?"
           version="$("${PODMAN}" exec --interactive --tty candidate /usr/bin/container-version | tr -d '[:space:]')"
+          echo "5 $?"
           [[ "${version}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || {
             echo "::error::container-version returned an empty or invalid registry tag: '${version}'"
             exit 2
           }
+          echo "6"
           "${PODMAN}" stop candidate
-          
+          echo "7"
           "${PODMAN}" "${container}:candidate" tag "${container}:latest"
           "${PODMAN}" "${container}:candidate" tag "${container}:${version}"
           "${PODMAN}" manifest push --all "${container}:${version}"
