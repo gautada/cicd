@@ -85,11 +85,11 @@ jobs:
             "${PODMAN}" manifest add "${latest}" "${image}"
           done < <(jq -r '.[]' <<< "${ARCHITECTURES}")
           versioned="${container}:${version}"
-          candidate_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
-            "docker://${container}:candidate")"
+          candidate_digest="sha256:$("${SKOPEO}" inspect --raw \
+            "docker://${container}:candidate" | sha256sum | awk '{print $1}')"
           if [[ "${ENFORCE_IMMUTABLE_TAGS}" == "true" ]]; then
-            if version_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
-              "docker://${versioned}" 2>/dev/null)"; then
+            if version_digest="sha256:$("${SKOPEO}" inspect --raw \
+              "docker://${versioned}" 2>/dev/null | sha256sum | awk '{print $1}')"; then
               [[ "${version_digest}" == "${candidate_digest}" ]] || {
                 echo "::error::Refusing to overwrite immutable tag ${versioned}"
                 exit 1
