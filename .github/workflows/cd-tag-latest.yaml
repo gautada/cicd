@@ -30,7 +30,7 @@ jobs:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          set -euo pipefail
+          set -exuo pipefail
           missing=()
           [[ -n "${REGISTRY_USERNAME}" ]] || missing+=(REGISTRY_USERNAME)
           [[ -n "${REGISTRY_TOKEN}" ]] || missing+=(REGISTRY_TOKEN)
@@ -63,7 +63,7 @@ jobs:
           TAG_BUILD: ${{ inputs.tag_build }}
           ENFORCE_IMMUTABLE_TAGS: ${{ inputs.enforce_immutable_tags }}
         run: |
-          set -euo pipefail
+          set -exuo pipefail
           printf '%s' "${REGISTRY_TOKEN}" | "${PODMAN}" login "${REGISTRY}" \
             --username "${REGISTRY_USERNAME}" --password-stdin
           container="${REGISTRY}/${REGISTRY_USERNAME}/${GITHUB_REPOSITORY#*/}"
