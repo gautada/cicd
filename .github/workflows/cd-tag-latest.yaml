@@ -8,7 +8,7 @@ on:
       registry_name: {description: Registry hostname, type: string, default: docker.io}
       tag_build: {description: Intermediate tag prefix, type: string, default: build}
       environment_name: {description: Protected GitHub Environment, type: string, default: container-registry}
-      enforce_immutable_tags: {description: "Refuse to overwrite an existing version tag with different content", type: boolean, default: true}
+      enforce_immutable_tags: {description: "Refuse to overwrite an existing version tag with different content", type: boolean, default: true} # yamllint disable-line rule:line-length
     secrets:
       REGISTRY_USERNAME: {required: false}
       REGISTRY_TOKEN: {required: false}
