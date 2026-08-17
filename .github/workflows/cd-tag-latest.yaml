@@ -8,6 +8,7 @@ on:
       registry_name: {description: Registry hostname, type: string, default: docker.io}
       tag_build: {description: Intermediate tag prefix, type: string, default: build}
       environment_name: {description: Protected GitHub Environment, type: string, default: container-registry}
+      enforce_immutable_tags: {description: "Refuse to overwrite an existing version tag with different content", type: boolean, default: true}
     secrets:
       REGISTRY_USERNAME: {required: false}
       REGISTRY_TOKEN: {required: false}
@@ -60,6 +61,7 @@ jobs:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
           TAG_BUILD: ${{ inputs.tag_build }}
+          ENFORCE_IMMUTABLE_TAGS: ${{ inputs.enforce_immutable_tags }}
         run: |
           set -euo pipefail
           printf '%s' "${REGISTRY_TOKEN}" | "${PODMAN}" login "${REGISTRY}" \
@@ -85,14 +87,19 @@ jobs:
           versioned="${container}:${version}"
           candidate_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
             "docker://${container}:candidate")"
-          if version_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
-            "docker://${versioned}" 2>/dev/null)"; then
-            [[ "${version_digest}" == "${candidate_digest}" ]] || {
-              echo "::error::Refusing to overwrite immutable tag ${versioned}"
-              exit 1
-            }
-            echo "${versioned} already identifies this manifest; keeping it."
+          if [[ "${ENFORCE_IMMUTABLE_TAGS}" == "true" ]]; then
+            if version_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
+              "docker://${versioned}" 2>/dev/null)"; then
+              [[ "${version_digest}" == "${candidate_digest}" ]] || {
+                echo "::error::Refusing to overwrite immutable tag ${versioned}"
+                exit 1
+              }
+              echo "${versioned} already identifies this manifest; keeping it."
+            else
+              "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
+            fi
           else
+            echo "enforce_immutable_tags is false; pushing ${versioned} unconditionally."
             "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
           fi
           "${PODMAN}" manifest push --all "${latest}" "docker://${latest}"
