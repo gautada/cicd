@@ -18,10 +18,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  container:
-    uses: gautada/cicd/.github/workflows/cicd-container.yaml@dev
+  base:
+    uses: gautada/cicd/.github/workflows/cicd-base.yaml@main
     with:
-      cicd_ref: dev
+      cicd_ref: main
+
+  container:
+    needs: base
+    uses: gautada/cicd/.github/workflows/cicd-container.yaml@main
     secrets:
       DOCKERIO_REGISTRY: ${{ secrets.DOCKERIO_REGISTRY }}
       DOCKERIO_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}

@@ -8,10 +8,6 @@ on:
         description: JSON array of CPU architectures
         type: string
         default: '["amd64", "arm64"]'
-      cicd_ref:
-        description: Revision used to obtain lint configuration
-        type: string
-        default: main
       environment_name:
         description: Protected GitHub Environment for registry operations
         type: string
@@ -39,18 +35,8 @@ permissions:
   security-events: write
 
 jobs:
-  lint:
-    uses: ./.github/workflows/ci-linter.yaml
-    with:
-      cicd_ref: ${{ inputs.cicd_ref }}
-
-  deep-scan:
-    needs: lint
-    uses: ./.github/workflows/ci-deep-scan.yaml
-
   build-pr:
     if: github.event_name == 'pull_request'
-    needs: [lint, deep-scan]
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +48,6 @@ jobs:
 
   build:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    needs: [lint, deep-scan]
     strategy:
       fail-fast: false
       matrix:
