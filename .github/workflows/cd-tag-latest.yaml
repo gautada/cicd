@@ -8,7 +8,7 @@ on:
       registry_name: {description: Registry hostname, type: string, default: docker.io}
       tag_build: {description: Intermediate tag prefix, type: string, default: build}
       environment_name: {description: Protected GitHub Environment, type: string, default: container-registry}
-      enforce_immutable_tags: {description: "Refuse to overwrite an existing version tag with different content", type: boolean, default: false}
+      enforce_immutable_tags: {description: "Refuse to overwrite an existing version tag with different content", type: boolean, default: false} # yamllint disable-line rule:line-length
     secrets:
       REGISTRY_USERNAME: {required: false}
       REGISTRY_TOKEN: {required: false}
@@ -41,22 +41,19 @@ jobs:
           fi
           jq -e 'type == "array" and length > 0' <<< "${ARCHITECTURES}" >/dev/null
           sudo apt-get update
-          # ******
-          # sudo apt-get install --yes podman crun conmon
-          sudo apt-get install --yes podman
-          sudo pat-get upgrade --yes
+          sudo apt-get install --yes podman crun conmon
           path_podman="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
           podman_path="$(dpkg-query --listfiles podman | awk '/\/bin\/podman$/ {print; exit}')"
           [[ -x "${podman_path}" ]] || { echo "::error::the installed podman package has no executable"; exit 1; }
           skopeo_path="$(command -v skopeo)" || { echo "::error::skopeo was not found on PATH"; exit 1; }
-          $ echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
-          $ echo "SKOPEO=${skopeo_path}" >> "${GITHUB_ENV}"
+          echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
+          echo "SKOPEO=${skopeo_path}" >> "${GITHUB_ENV}"
           echo "Podman on PATH: ${path_podman}"
           echo "Podman from installed package: ${podman_path}"
           "${podman_path}" --version
-          $ crun --version
-          $ conmon --version
-          $ "${skopeo_path}" --version
+          crun --version
+          conmon --version
+          "${skopeo_path}" --version
       - name: Publish immutable version and latest
         env:
           ARCHITECTURES: ${{ inputs.architectures }}
@@ -88,11 +85,11 @@ jobs:
             "${PODMAN}" manifest add "${latest}" "${image}"
           done < <(jq -r '.[]' <<< "${ARCHITECTURES}")
           versioned="${container}:${version}"
-          candidate_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
-            "docker://${container}:candidate")"
+          candidate_digest="sha256:$("${SKOPEO}" inspect --raw \
+            "docker://${container}:candidate" | sha256sum | awk '{print $1}')"
           if [[ "${ENFORCE_IMMUTABLE_TAGS}" == "true" ]]; then
-            if version_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
-              "docker://${versioned}" 2>/dev/null)"; then
+            if version_digest="sha256:$("${SKOPEO}" inspect --raw \
+              "docker://${versioned}" 2>/dev/null | sha256sum | awk '{print $1}')"; then
               [[ "${version_digest}" == "${candidate_digest}" ]] || {
                 echo "::error::Refusing to overwrite immutable tag ${versioned}"
                 exit 1
