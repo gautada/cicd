@@ -44,7 +44,7 @@ jobs:
           sudo apt-get update
           # ******
           # sudo apt-get install --yes podman crun conmon
-          sudo apt-get install --yes podma
+          sudo apt-get install --yes podman
           sudo pat-get upgrade --yes
           path_podman="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
           podman_path="$(dpkg-query --listfiles podman | awk '/\/bin\/podman$/ {print; exit}')"
