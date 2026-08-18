@@ -17,13 +17,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-pr:
+    name: Check for an open PR on this branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Skip push runs once a PR is already open for this branch
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          skip=false
+          if [[ "${EVENT_NAME}" == push && "${REF_NAME}" != dev && "${REF_NAME}" != main ]]; then
+            existing="$(gh pr list --head "${REF_NAME}" --state open \
+              --json number --jq '.[0].number // empty')"
+            if [[ -n "${existing}" ]]; then
+              echo "PR #${existing} is already open for ${REF_NAME}; skipping the push-triggered run."
+              skip=true
+            fi
+          fi
+          echo "skip=${skip}" >> "${GITHUB_OUTPUT}"
+
   base:
+    needs: check-pr
+    if: needs.check-pr.outputs.skip != 'true'
     uses: gautada/cicd/.github/workflows/cicd-base.yaml@main
     with:
       cicd_ref: main
 
   container:
-    needs: base
+    needs: [check-pr, base]
+    if: needs.check-pr.outputs.skip != 'true'
     uses: gautada/cicd/.github/workflows/cicd-container.yaml@main
     secrets:
       DOCKERIO_REGISTRY: ${{ secrets.DOCKERIO_REGISTRY }}
