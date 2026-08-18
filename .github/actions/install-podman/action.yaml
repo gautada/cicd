@@ -1,0 +1,55 @@
+name: Install Podman
+description: >-
+  Install podman via apt, working around GitHub-hosted runners'
+  intermittently unreachable regional apt mirror (azure.archive.ubuntu.com)
+  by forcing the upstream mirror and tuning apt's retry/timeout behavior.
+inputs:
+  packages:
+    description: Space-separated apt package list to install (in addition to podman)
+    required: false
+    default: ""
+outputs:
+  podman-path:
+    description: Absolute path to the installed podman executable
+    value: ${{ steps.locate.outputs.podman-path }}
+runs:
+  using: composite
+  steps:
+    - name: Work around azure.archive.ubuntu.com flakiness
+      shell: bash
+      run: |
+        set -euo pipefail
+        # GitHub-hosted ubuntu-latest runners default to a regional Azure
+        # mirror that intermittently stalls or is entirely unreachable,
+        # causing apt-get update/install to hang for 15-20+ minutes retrying
+        # against it before eventually falling back to the real upstream
+        # archive. Point straight at archive.ubuntu.com to skip that mirror
+        # entirely, and tune apt's own retry/timeout so a genuinely slow
+        # mirror fails fast instead of hanging.
+        sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' \
+          /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
+        sudo find /etc/apt/sources.list.d -name '*.sources' -o -name '*.list' 2>/dev/null \
+          | xargs -r sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g'
+    - name: Install podman
+      id: install
+      shell: bash
+      env:
+        EXTRA_PACKAGES: ${{ inputs.packages }}
+      run: |
+        set -euo pipefail
+        apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=10)
+        sudo timeout 120 apt-get "${apt_opts[@]}" update
+        # shellcheck disable=SC2086
+        sudo timeout 180 apt-get "${apt_opts[@]}" install --yes podman ${EXTRA_PACKAGES}
+    - name: Locate podman
+      id: locate
+      shell: bash
+      run: |
+        set -euo pipefail
+        podman_path="$(command -v podman)" || {
+          echo "::error::podman was not found on PATH"
+          exit 1
+        }
+        echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
+        echo "podman-path=${podman_path}" >> "${GITHUB_OUTPUT}"
+        "${podman_path}" --version
