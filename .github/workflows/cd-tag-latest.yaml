@@ -71,7 +71,7 @@ jobs:
           first_arch="$(jq -r '.[0]' <<< "${ARCHITECTURES}")"
           first_image="${container}:${TAG_BUILD}-${first_arch}-${sha}"
           "${PODMAN}" pull "${first_image}"
-          version="$("${PODMAN}" run --rm --entrypoint /usr/bin/container-version "${first_image}" | tr -d '[:space:]')"
+          version="$("${PODMAN}" run --rm --log-driver none --entrypoint /usr/bin/container-version "${first_image}" | tr -d '[:space:]')"
           [[ "${version}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || {
             echo "::error::container-version returned an empty or invalid registry tag: '${version}'"
             exit 2
