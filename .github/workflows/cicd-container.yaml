@@ -27,7 +27,7 @@ on:
       enforce_immutable_tags:
         description: Refuse to overwrite an existing version tag with different content
         type: boolean
-        default: true
+        default: false
     secrets:
       DOCKERIO_REGISTRY:
         required: false

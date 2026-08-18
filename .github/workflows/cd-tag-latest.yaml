@@ -8,8 +8,7 @@ on:
       registry_name: {description: Registry hostname, type: string, default: docker.io}
       tag_build: {description: Intermediate tag prefix, type: string, default: build}
       environment_name: {description: Protected GitHub Environment, type: string, default: container-registry}
-      # *****
-      # enforce_immutable_tags: {description: "Refuse to overwrite an existing version tag with different content", type: boolean, default: false}
+      enforce_immutable_tags: {description: "Refuse to overwrite an existing version tag with different content", type: boolean, default: false}
     secrets:
       REGISTRY_USERNAME: {required: false}
       REGISTRY_TOKEN: {required: false}
@@ -49,8 +48,7 @@ jobs:
           path_podman="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
           podman_path="$(dpkg-query --listfiles podman | awk '/\/bin\/podman$/ {print; exit}')"
           [[ -x "${podman_path}" ]] || { echo "::error::the installed podman package has no executable"; exit 1; }
-          # *****
-          # skopeo_path="$(command -v skopeo)" || { echo "::error::skopeo was not found on PATH"; exit 1; }
+          skopeo_path="$(command -v skopeo)" || { echo "::error::skopeo was not found on PATH"; exit 1; }
           $ echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
           $ echo "SKOPEO=${skopeo_path}" >> "${GITHUB_ENV}"
           echo "Podman on PATH: ${path_podman}"
@@ -92,21 +90,20 @@ jobs:
           versioned="${container}:${version}"
           candidate_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
             "docker://${container}:candidate")"
-          # *****
-          # if [[ "${ENFORCE_IMMUTABLE_TAGS}" == "true" ]]; then
-          #   if version_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
-          #     "docker://${versioned}" 2>/dev/null)"; then
-          #     [[ "${version_digest}" == "${candidate_digest}" ]] || {
-          #       echo "::error::Refusing to overwrite immutable tag ${versioned}"
-          #       exit 1
-          #     }
-          #     echo "${versioned} already identifies this manifest; keeping it."
-          #   else
-          #     "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
-          #   fi
-          # else
+          if [[ "${ENFORCE_IMMUTABLE_TAGS}" == "true" ]]; then
+            if version_digest="$("${SKOPEO}" inspect --format '{{.Digest}}' \
+              "docker://${versioned}" 2>/dev/null)"; then
+              [[ "${version_digest}" == "${candidate_digest}" ]] || {
+                echo "::error::Refusing to overwrite immutable tag ${versioned}"
+                exit 1
+              }
+              echo "${versioned} already identifies this manifest; keeping it."
+            else
+              "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
+            fi
+          else
             echo "enforce_immutable_tags is false; pushing ${versioned} unconditionally."
             "${PODMAN}" manifest push --all "${latest}" "docker://${versioned}"
-          # fi
+          fi
           "${PODMAN}" manifest push --all "${latest}" "docker://${latest}"
           printf 'Published %s and %s\n' "${latest}" "${versioned}" >> "${GITHUB_STEP_SUMMARY}"
