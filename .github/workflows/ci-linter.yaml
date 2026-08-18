@@ -40,6 +40,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_STATUS_API: false
+          ENABLE_GITHUB_PULL_REQUEST_SUMMARY_COMMENT: false
           OUTPUT_DETAILS: detailed
           LINTER_RULES_PATH: .
           FILTER_REGEX_EXCLUDE: '.*\.zsh$'

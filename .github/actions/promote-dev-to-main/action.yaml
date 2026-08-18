@@ -1,0 +1,64 @@
+name: Promote dev to main
+description: >-
+  Open or update the dev-to-main promotion PR, with its body listing every
+  feature PR merged into dev since main last moved.
+inputs:
+  intro:
+    description: Leading sentence for the promotion PR body
+    required: false
+    default: Automated promotion after dev's checks passed.
+runs:
+  using: composite
+  steps:
+    - name: Build accumulated feature PR list
+      id: notes
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        INTRO: ${{ inputs.intro }}
+      run: |
+        set -euo pipefail
+        git fetch origin main dev --quiet
+        numbers="$(git log origin/main..origin/dev --merges \
+          --grep='Merge pull request #' --format='%s' \
+          | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)"
+        {
+          echo "body<<PROMOTE_BODY_EOF"
+          echo "${INTRO}"
+          echo
+          if [[ -n "${numbers}" ]]; then
+            echo "## Feature PRs included in this release"
+            echo
+            while IFS= read -r number; do
+              [[ -n "${number}" ]] || continue
+              title="$(gh pr view "${number}" --json title --jq '.title' 2>/dev/null || echo "")"
+              if [[ -n "${title}" ]]; then
+                echo "- #${number} - ${title}"
+              else
+                echo "- #${number}"
+              fi
+            done <<< "${numbers}"
+          else
+            echo "_No merged feature PRs found between main and dev._"
+          fi
+          echo "PROMOTE_BODY_EOF"
+        } >> "${GITHUB_OUTPUT}"
+    - name: Create or update promotion PR
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        BODY: ${{ steps.notes.outputs.body }}
+      run: |
+        set -euo pipefail
+        existing="$(gh pr list --base main --head dev --state open \
+          --json number --jq '.[0].number // empty')"
+        if [[ -n "${existing}" ]]; then
+          gh pr edit "${existing}" --body "${BODY}"
+          echo "Updated promotion PR #${existing} with the latest feature PR list."
+        else
+          gh pr create --base main --head dev \
+            --title "Promote dev to main" \
+            --body "${BODY}"
+        fi

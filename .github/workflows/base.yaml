@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [dev, main]
   push:
-    branches: [dev, main]
 
 permissions:
   contents: read
@@ -18,7 +17,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  enforce-dev-only:
+    name: Only accept promotions from dev
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - uses: ./.github/actions/enforce-dev-only
+
+  check-pr:
+    name: Check for an open PR on this branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - uses: ./.github/actions/check-pr-open
+        id: check
+
   base:
+    needs: check-pr
+    if: needs.check-pr.outputs.skip != 'true'
     uses: ./.github/workflows/cicd-base.yaml
     with:
       cicd_ref: dev
@@ -33,18 +54,9 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Create promotion PR when none is open
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          existing="$(gh pr list --base main --head dev --state open \
-            --json number --jq '.[0].number // empty')"
-          if [[ -n "${existing}" ]]; then
-            echo "Promotion PR #${existing} already contains the latest dev commits."
-            exit 0
-          fi
-          gh pr create --base main --head dev \
-            --title "Promote dev to main" \
-            --body "Automated promotion after cicd's own lint and deep-scan passed."
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/promote-dev-to-main
+        with:
+          intro: Automated promotion after cicd's own lint and deep-scan passed.
