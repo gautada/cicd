@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [dev, main]
   push:
-    branches: [dev, main]
 
 permissions:
   contents: read
@@ -33,18 +32,55 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Create promotion PR when none is open
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - name: Build accumulated feature PR list
+        id: notes
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          git fetch origin main dev --quiet
+          numbers="$(git log origin/main..origin/dev --merges \
+            --grep='Merge pull request #' --format='%s' \
+            | grep -oE '#[0-9]+' | tr -d '#' | sort -un || true)"
+          {
+            echo "body<<PROMOTE_BODY_EOF"
+            echo "Automated promotion after cicd's own lint and deep-scan passed."
+            echo
+            if [[ -n "${numbers}" ]]; then
+              echo "## Feature PRs included in this release"
+              echo
+              while IFS= read -r number; do
+                [[ -n "${number}" ]] || continue
+                title="$(gh pr view "${number}" --json title --jq '.title' 2>/dev/null || echo "")"
+                if [[ -n "${title}" ]]; then
+                  echo "- #${number} - ${title}"
+                else
+                  echo "- #${number}"
+                fi
+              done <<< "${numbers}"
+            else
+              echo "_No merged feature PRs found between main and dev._"
+            fi
+            echo "PROMOTE_BODY_EOF"
+          } >> "${GITHUB_OUTPUT}"
+      - name: Create or update promotion PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BODY: ${{ steps.notes.outputs.body }}
+        run: |
+          set -euo pipefail
           existing="$(gh pr list --base main --head dev --state open \
             --json number --jq '.[0].number // empty')"
           if [[ -n "${existing}" ]]; then
-            echo "Promotion PR #${existing} already contains the latest dev commits."
-            exit 0
+            gh pr edit "${existing}" --body "${BODY}"
+            echo "Updated promotion PR #${existing} with the latest feature PR list."
+          else
+            gh pr create --base main --head dev \
+              --title "Promote dev to main" \
+              --body "${BODY}"
           fi
-          gh pr create --base main --head dev \
-            --title "Promote dev to main" \
-            --body "Automated promotion after cicd's own lint and deep-scan passed."
