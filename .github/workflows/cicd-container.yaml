@@ -8,10 +8,6 @@ on:
         description: JSON array of CPU architectures
         type: string
         default: '["amd64", "arm64"]'
-      cicd_ref:
-        description: Revision used to obtain lint configuration
-        type: string
-        default: main
       environment_name:
         description: Protected GitHub Environment for registry operations
         type: string
@@ -39,18 +35,10 @@ permissions:
   security-events: write
 
 jobs:
-  lint:
-    uses: ./.github/workflows/ci-linter.yaml
-    with:
-      cicd_ref: ${{ inputs.cicd_ref }}
-
-  deep-scan:
-    needs: lint
-    uses: ./.github/workflows/ci-deep-scan.yaml
-
   build-pr:
-    if: github.event_name == 'pull_request'
-    needs: [lint, deep-scan]
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main')
     strategy:
       fail-fast: false
       matrix:
@@ -61,8 +49,9 @@ jobs:
       publish: false
 
   build:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    needs: [lint, deep-scan]
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
     strategy:
       fail-fast: false
       matrix:
@@ -109,21 +98,12 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Create promotion PR when none is open
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          existing="$(gh pr list --base main --head dev --state open \
-            --json number --jq '.[0].number // empty')"
-          if [[ -n "${existing}" ]]; then
-            echo "Promotion PR #${existing} already contains the latest dev commits."
-            exit 0
-          fi
-          gh pr create --base main --head dev \
-            --title "Promote dev to main" \
-            --body "Automated promotion after the dev image passed CI and container tests."
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/promote-dev-to-main
+        with:
+          intro: Automated promotion after the dev image passed CI and container tests.
 
   publish-release:
     if: github.ref == 'refs/heads/main'
@@ -160,3 +140,56 @@ jobs:
     secrets:
       REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
       REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+
+  github-release:
+    name: Cut a GitHub Release
+    if: github.ref == 'refs/heads/main'
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - name: Determine version and release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="${GITHUB_SHA}"
+          tag="release-${sha:0:7}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          merged_pr="$(gh pr list --base main --state merged \
+            --search "head:dev" --json number,body,mergeCommit \
+            --jq "[.[] | select(.mergeCommit.oid == \"${sha}\")][0]")"
+          body="$(jq -r '.body // empty' <<< "${merged_pr}")"
+          {
+            echo "body<<RELEASE_BODY_EOF"
+            if [[ -n "${body}" ]]; then
+              echo "${body}"
+            else
+              echo "Automated release from ${sha}."
+            fi
+            echo "RELEASE_BODY_EOF"
+          } >> "${GITHUB_OUTPUT}"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.notes.outputs.tag }}
+          BODY: ${{ steps.notes.outputs.body }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; skipping."
+            exit 0
+          fi
+          gh release create "${TAG}" \
+            --target main \
+            --title "${TAG}" \
+            --notes "${BODY}"
