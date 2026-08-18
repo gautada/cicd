@@ -1,0 +1,50 @@
+---
+name: Base CI/CD harness
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+concurrency:
+  group: base-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  base:
+    uses: ./.github/workflows/cicd-base.yaml
+    with:
+      cicd_ref: dev
+
+  promote:
+    name: Open or update dev to main PR
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    needs: base
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Create promotion PR when none is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          existing="$(gh pr list --base main --head dev --state open \
+            --json number --jq '.[0].number // empty')"
+          if [[ -n "${existing}" ]]; then
+            echo "Promotion PR #${existing} already contains the latest dev commits."
+            exit 0
+          fi
+          gh pr create --base main --head dev \
+            --title "Promote dev to main" \
+            --body "Automated promotion after cicd's own lint and deep-scan passed."
