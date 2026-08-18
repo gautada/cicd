@@ -17,6 +17,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  enforce-dev-only:
+    name: Only accept promotions from dev
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Reject any PR into main that isn't from dev
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [[ "${HEAD_REF}" != "dev" ]]; then
+            echo "::error::Direct PRs into main are not allowed - merge into dev first, then promote dev to main."
+            exit 1
+          fi
+
   check-pr:
     name: Check for an open PR on this branch
     runs-on: ubuntu-latest
