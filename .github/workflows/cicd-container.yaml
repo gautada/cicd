@@ -156,7 +156,8 @@ jobs:
       architectures: ${{ inputs.architectures }}
       environment_name: ${{ inputs.environment_name }}
       registry_name: ${{ inputs.registry_name }}
-      enforce_immutable_tags: ${{ inputs.enforce_immutable_tags }}
+      # *****
+      # enforce_immutable_tags: ${{ inputs.enforce_immutable_tags }}
     secrets:
       REGISTRY_USERNAME: ${{ secrets.DOCKERIO_REGISTRY }}
       REGISTRY_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
