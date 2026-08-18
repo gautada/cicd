@@ -40,17 +40,20 @@ jobs:
             exit 2
           fi
           jq -e 'type == "array" and length > 0' <<< "${ARCHITECTURES}" >/dev/null
-          sudo apt-get update
-          sudo apt-get install --yes podman crun conmon
+      - name: Install Podman, crun, conmon, and skopeo
+        uses: ./.github/actions/install-podman
+        with:
+          packages: crun conmon skopeo
+      - name: Verify Podman toolchain
+        run: |
+          set -euo pipefail
           path_podman="$(command -v podman)" || { echo "::error::podman was not found on PATH"; exit 1; }
           podman_path="$(dpkg-query --listfiles podman | awk '/\/bin\/podman$/ {print; exit}')"
           [[ -x "${podman_path}" ]] || { echo "::error::the installed podman package has no executable"; exit 1; }
           skopeo_path="$(command -v skopeo)" || { echo "::error::skopeo was not found on PATH"; exit 1; }
-          echo "PODMAN=${podman_path}" >> "${GITHUB_ENV}"
           echo "SKOPEO=${skopeo_path}" >> "${GITHUB_ENV}"
           echo "Podman on PATH: ${path_podman}"
           echo "Podman from installed package: ${podman_path}"
-          "${podman_path}" --version
           crun --version
           conmon --version
           "${skopeo_path}" --version
