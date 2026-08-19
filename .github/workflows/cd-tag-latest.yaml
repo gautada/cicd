@@ -41,7 +41,7 @@ jobs:
           fi
           jq -e 'type == "array" and length > 0' <<< "${ARCHITECTURES}" >/dev/null
       - name: Install Podman, crun, conmon, and skopeo
-        uses: ./.github/actions/install-podman
+        uses: gautada/cicd/.github/actions/install-podman@main  # nosemgrep
         with:
           packages: crun conmon skopeo
       - name: Verify Podman toolchain
