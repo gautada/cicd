@@ -94,10 +94,11 @@ for file in "${CONFIG_FILES[@]}"; do
 done
 
 if [[ "${workflow}" == container ]]; then
-  download .github/workflows/container.yaml "${stage_dir}/container.dev.yaml"
+  download templates/workflows/container.yaml "${stage_dir}/container.dev.yaml"
   sed \
-    -e "s|cicd-container.yaml@dev|cicd-container.yaml@${cicd_ref}|" \
-    -e "s|cicd_ref: dev|cicd_ref: ${cicd_ref}|" \
+    -e "s|cicd-base.yaml@main|cicd-base.yaml@${cicd_ref}|" \
+    -e "s|cicd-container.yaml@main|cicd-container.yaml@${cicd_ref}|" \
+    -e "s|cicd_ref: main|cicd_ref: ${cicd_ref}|" \
     "${stage_dir}/container.dev.yaml" > "${stage_dir}/container.yaml"
 
   mkdir -p .github/workflows

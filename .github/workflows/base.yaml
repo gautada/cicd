@@ -1,0 +1,60 @@
+---
+name: Base CI/CD harness
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+concurrency:
+  group: base-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  enforce-dev-only:
+    name: Only accept promotions from dev
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - uses: ./.github/actions/enforce-dev-only
+
+#   check-pr:
+#     name: Check for an open PR on this branch
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 5
+#     outputs:
+#       skip: ${{ steps.check.outputs.skip }}
+#     steps:
+#       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+#       - uses: ./.github/actions/check-pr-open
+#         id: check
+
+  base:
+#     needs: check-pr
+#     if: needs.check-pr.outputs.skip != 'true'
+    uses: ./.github/workflows/cicd-base.yaml
+    with:
+      cicd_ref: dev
+
+  promote:
+    name: Open or update dev to main PR
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    needs: base
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/promote-dev-to-main
+        with:
+          intro: Automated promotion after cicd's own lint and deep-scan passed.

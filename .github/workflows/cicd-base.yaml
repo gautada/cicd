@@ -1,0 +1,24 @@
+---
+name: Base Quality Gate
+
+on:
+  workflow_call:
+    inputs:
+      cicd_ref:
+        description: Revision used to obtain lint configuration
+        type: string
+        default: main
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  lint:
+    uses: ./.github/workflows/ci-linter.yaml
+    with:
+      cicd_ref: ${{ inputs.cicd_ref }}
+
+  deep-scan:
+    needs: lint
+    uses: ./.github/workflows/ci-deep-scan.yaml
