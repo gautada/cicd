@@ -36,8 +36,8 @@ jobs:
 #         id: check
 
   base:
-    needs: check-pr
-    if: needs.check-pr.outputs.skip != 'true'
+#     needs: check-pr
+#     if: needs.check-pr.outputs.skip != 'true'
     uses: ./.github/workflows/cicd-base.yaml
     with:
       cicd_ref: dev
