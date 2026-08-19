@@ -101,7 +101,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/promote-dev-to-main
+      - uses: gautada/cicd/.github/actions/promote-dev-to-main@main
         with:
           intro: Automated promotion after the dev image passed CI and container tests.
 
@@ -157,6 +157,6 @@ jobs:
       - id: tag
         shell: bash
         run: echo "tag=release-${GITHUB_SHA:0:7}" >> "${GITHUB_OUTPUT}"
-      - uses: ./.github/actions/cut-github-release
+      - uses: gautada/cicd/.github/actions/cut-github-release@main
         with:
           tag: ${{ steps.tag.outputs.tag }}
