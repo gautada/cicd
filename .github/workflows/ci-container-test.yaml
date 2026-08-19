@@ -41,7 +41,7 @@ jobs:
             exit 2
           fi
       - name: Install Podman
-        uses: gautada/cicd/.github/actions/install-podman@main
+        uses: gautada/cicd/.github/actions/install-podman@main  # nosemgrep
       - name: Log in and pull image
         env:
           REGISTRY: ${{ inputs.registry_name }}

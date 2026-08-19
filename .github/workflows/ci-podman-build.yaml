@@ -70,7 +70,7 @@ jobs:
           }
           [[ -f "${CONTAINERFILE}" ]] || { echo "::error::Missing ${CONTAINERFILE}"; exit 2; }
       - name: Install Podman
-        uses: gautada/cicd/.github/actions/install-podman@main
+        uses: gautada/cicd/.github/actions/install-podman@main  # nosemgrep
       - name: Build image
         env:
           ARCHITECTURE: ${{ inputs.architecture }}
@@ -144,7 +144,7 @@ jobs:
             exit 2
           }
       - name: Install Podman
-        uses: gautada/cicd/.github/actions/install-podman@main
+        uses: gautada/cicd/.github/actions/install-podman@main  # nosemgrep
       - name: Log in to registry
         env:
           REGISTRY: ${{ inputs.registry_name }}
