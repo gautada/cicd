@@ -29,7 +29,8 @@ gh api -X PUT repos/gautada/cicd/branches/dev/protection \
 
 ## Restricting approval to you specifically (optional, addresses 2b precisely)
 
-Plain "require 1 approval" lets anyone with write access approve — not just you. If you want it locked to you:
+Plain "require 1 approval" lets anyone with write access approve — not just
+you. If you want it locked to you:
 
 Create CODEOWNERS in each repo's .github/ folder:* @gautada
 
