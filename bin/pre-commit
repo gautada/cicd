@@ -4,6 +4,7 @@ set -euo pipefail
 
 readonly DEFAULT_REF="main"
 readonly REPOSITORY="gautada/cicd"
+readonly HADOLINT_VERSION="v2.15.1"
 readonly CONFIG_FILES=(
   .flake8 .hadolint.yaml .htmlhintrc .jscpd.json .markdownlint.yaml
   .pre-commit-config.yaml .shellcheckrc .sqlfluff .yamllint.yaml pyproject.toml
@@ -11,18 +12,23 @@ readonly CONFIG_FILES=(
 
 pull_only=false
 sync_project=false
+do_install=false
 workflow=''
 cicd_ref="${CICD_REF:-${DEFAULT_REF}}"
 
 usage() {
   cat <<'EOF'
 Usage: pre-commit [--pull-only] [--workflow NAME] [--sync-project] [--ref REF]
+                   [--install]
 
 Downloads the shared, gitignored lint configuration and runs pre-commit.
   --pull-only       Download configuration but do not install/run hooks.
   --workflow NAME   Install a workflow; currently supported: container.
   --sync-project    Replace the selected workflow and canonical .gitignore.
   --ref REF         Use a branch, tag, or commit (default: main).
+  --install         Attempt to install missing system tools (pre-commit,
+                     hadolint, shellcheck) via the detected package manager
+                     before failing.
 EOF
 }
 
@@ -30,6 +36,7 @@ while (($#)); do
   case "$1" in
     --pull-only) pull_only=true ;;
     --sync-project) sync_project=true ;;
+    --install) do_install=true ;;
     --workflow)
       shift
       [[ $# -gt 0 ]] || { echo "ERROR: --workflow requires a value" >&2; exit 2; }
@@ -135,16 +142,130 @@ if [[ "${sync_project}" == true && "${workflow}" == container ]]; then
   install -m 0644 "${stage_dir}/gitignore" .gitignore
 fi
 
+detect_os() {
+  case "$(uname -s)" in
+    Darwin) echo macos ;;
+    Linux)
+      if [[ -r /etc/os-release ]] && grep -qiE '^ID(_LIKE)?=.*(ubuntu|debian)' /etc/os-release; then
+        echo ubuntu
+      else
+        echo linux
+      fi
+      ;;
+    *) echo unknown ;;
+  esac
+}
+
+detect_package_manager() {
+  case "$(detect_os)" in
+    macos) command -v brew >/dev/null 2>&1 && echo brew || echo none ;;
+    ubuntu) command -v apt-get >/dev/null 2>&1 && echo apt-get || echo none ;;
+    *) echo none ;;
+  esac
+}
+
+install_hint() {
+  local tool="$1" os pm
+  os="$(detect_os)"
+  pm="$(detect_package_manager)"
+  echo "ERROR: ${tool} is not installed." >&2
+  if [[ "${tool}" == hadolint ]]; then
+    echo "hadolint has no apt package; download the pinned release binary" >&2
+    echo "from https://github.com/hadolint/hadolint/releases/tag/${HADOLINT_VERSION}" >&2
+    echo "or rerun this command with --install to fetch and verify it automatically." >&2
+    return
+  fi
+  case "${pm}" in
+    brew) echo "Install it with 'brew install ${tool}' and rerun this command." >&2 ;;
+    apt-get) echo "Install it with 'sudo apt-get install --yes ${tool}' and rerun this command." >&2 ;;
+    *)
+      echo "No known package manager was detected for OS '${os}'." >&2
+      echo "See https://pre-commit.com or the ${tool} project's own install docs." >&2
+      ;;
+  esac
+  echo "Or rerun this command with --install to attempt installation automatically." >&2
+}
+
+install_pre_commit() {
+  local pm
+  pm="$(detect_package_manager)"
+  case "${pm}" in
+    brew) brew install pre-commit ;;
+    apt-get) sudo apt-get update && sudo apt-get install --yes pre-commit ;;
+    *) return 1 ;;
+  esac
+}
+
+install_shellcheck() {
+  local pm
+  pm="$(detect_package_manager)"
+  case "${pm}" in
+    brew) brew install shellcheck ;;
+    apt-get) sudo apt-get update && sudo apt-get install --yes shellcheck ;;
+    *) return 1 ;;
+  esac
+}
+
+install_hadolint() {
+  # hadolint has no apt package; pin the same GitHub release binary on every
+  # OS so behavior matches between macOS and Ubuntu ("samesies").
+  local os asset dest tmp_dir machine
+  os="$(detect_os)"
+  machine="$(uname -m)"
+  case "${os}" in
+    macos) asset="hadolint-macos-${machine}" ;;
+    ubuntu|linux)
+      case "${machine}" in
+        aarch64|arm64) asset="hadolint-linux-arm64" ;;
+        *) asset="hadolint-linux-x86_64" ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${tmp_dir}"' RETURN
+  curl --fail --silent --show-error --location \
+    "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${asset}" \
+    --output "${tmp_dir}/${asset}"
+  curl --fail --silent --show-error --location \
+    "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/checksums.sha256" \
+    --output "${tmp_dir}/checksums.sha256"
+  (cd "${tmp_dir}" && grep " \*${asset}\$" checksums.sha256 | sha256sum --check --status) || {
+    echo "ERROR: hadolint checksum verification failed" >&2
+    return 1
+  }
+  chmod +x "${tmp_dir}/${asset}"
+  dest="/usr/local/bin/hadolint"
+  if [[ -w "$(dirname "${dest}")" ]]; then
+    install -m 0755 "${tmp_dir}/${asset}" "${dest}"
+  else
+    sudo install -m 0755 "${tmp_dir}/${asset}" "${dest}"
+  fi
+}
+
+ensure_tool() {
+  local tool="$1" installer="$2"
+  command -v "${tool}" >/dev/null 2>&1 && return 0
+  if [[ "${do_install}" == true ]]; then
+    echo "==> ${tool} not found; attempting install via --install"
+    if "${installer}" && command -v "${tool}" >/dev/null 2>&1; then
+      echo "    + ${tool} installed"
+      return 0
+    fi
+    echo "ERROR: automatic install of ${tool} failed." >&2
+  fi
+  install_hint "${tool}"
+  return 1
+}
+
 if [[ "${pull_only}" == true ]]; then
   echo "==> Configuration downloaded; install and lint skipped."
   exit 0
 fi
 
-command -v pre-commit >/dev/null 2>&1 || {
-  echo "ERROR: pre-commit is not installed." >&2
-  echo "Install it with 'pipx install pre-commit' and rerun this command." >&2
-  exit 1
-}
+ensure_tool pre-commit install_pre_commit || exit 1
+ensure_tool shellcheck install_shellcheck || exit 1
+ensure_tool hadolint install_hadolint || exit 1
 
 echo "==> Installing the repository hook"
 pre-commit install
