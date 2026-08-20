@@ -20,5 +20,4 @@ jobs:
       cicd_ref: ${{ inputs.cicd_ref }}
 
   deep-scan:
-    needs: lint
     uses: ./.github/workflows/ci-deep-scan.yaml
