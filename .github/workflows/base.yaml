@@ -24,20 +24,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       - uses: ./.github/actions/enforce-dev-only
 
-#   check-pr:
-#     name: Check for an open PR on this branch
-#     runs-on: ubuntu-latest
-#     timeout-minutes: 5
-#     outputs:
-#       skip: ${{ steps.check.outputs.skip }}
-#     steps:
-#       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
-#       - uses: ./.github/actions/check-pr-open
-#         id: check
-
   base:
-#     needs: check-pr
-#     if: needs.check-pr.outputs.skip != 'true'
     uses: ./.github/workflows/cicd-base.yaml
     with:
       cicd_ref: dev
