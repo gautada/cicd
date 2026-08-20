@@ -5,14 +5,22 @@ security scanning, building, testing, and publishing multi-architecture Podman
 images. It also provides an ephemeral pre-commit configuration and a consumer
 workflow installer.
 
-The repository is also its own smallest consumer. `Containerfile` implements
-the built-in test and version commands, while `.github/workflows/container.yaml`
-calls `cicd-container.yaml` at `@dev`. The installer copies that same canonical
-caller into consumer repositories and rewrites it to `@main`. Pull requests
-exercise secret-free lint, scan, and multi-architecture builds; pushes exercise
-the protected publish, test, and release path. Keep this container-only harness
-minimal. Future Go and Python combinations should use separate orchestrators or
-documented inputs instead of adding language tooling to the baseline image.
+The repository is also its own smallest consumer, but of the lint/deep-scan
+gate only - `cicd` is a tooling repo with nothing to build or publish.
+`.github/workflows/base.yaml` is `cicd`'s own top-level trigger: it runs
+`cicd-base.yaml` (lint + deep scan) on every push, blocks direct PRs into
+`main` that don't come from `dev` (`enforce-dev-only`), opens/updates a
+`dev`-to-`main` promotion PR on every `dev` push, and cuts a tagged GitHub
+Release (`v<YYYY.MM.DD>.<short-sha>`) on every `main` push.
+
+Container-building consumer repositories (`debian`, `python`, etc.) use a
+different top-level trigger: `templates/workflows/container.yaml`. It is not
+downloaded into `cicd` itself - only into consumer repos, via the installer
+below - and it calls both `cicd-base.yaml` (lint + deep scan) and
+`cicd-container.yaml` (the full build/publish/release pipeline) at `@main`.
+Keep this container-only harness minimal. Future Go and Python combinations
+should use separate orchestrators or documented inputs instead of adding
+language tooling to the baseline image.
 
 The design keeps registry credentials away from pull-request code, validates
 changes before publishing, and requires a human-reviewed `dev` to `main`
@@ -21,16 +29,21 @@ promotion before release tags move.
 ## Delivery lifecycle
 
 ```text
-PR to dev/main
-  └─ lint ─ deep scan ─ local amd64/arm64 builds (no registry secrets)
+push to any branch that is not dev/main
+  └─ lint ─ deep scan (parallel) ─ local amd64/arm64 builds (no registry secrets)
+
+pull_request into main that is not from dev
+  └─ rejected immediately (enforce-dev-only)
 
 push to dev
-  └─ lint ─ deep scan ─ build/push commit images ─ publish :dev
-       └─ container test ─ create or reuse dev→main PR
+  └─ lint ─ deep scan (parallel) ─ build/push commit images ─ publish :dev
+       └─ container test ─ create or update the dev→main promotion PR
+            (body lists every feature PR merged into dev since main last moved)
 
 merge/push to main
-  └─ lint ─ deep scan ─ rebuild/push commit images ─ publish :candidate
+  └─ lint ─ deep scan (parallel) ─ rebuild/push commit images ─ publish :candidate
        └─ container test ─ publish :<container-version> and :latest
+            └─ cut a GitHub Release (release-<short-sha>, notes from the promotion PR)
 ```
 
 The workflows never merge the promotion PR. A human reviews and merges it.
@@ -41,6 +54,8 @@ must be valid OCI/Docker tag strings.
 
 | Workflow | Trigger | Purpose | Important inputs | Credentials |
 | --- | --- | --- | --- | --- |
+| `base.yaml` | `push`, `pull_request`, `workflow_dispatch` | `cicd`'s own top-level trigger: lint/deep-scan, dev-only enforcement, dev→main promotion, GitHub Releases | none (fixed to `cicd` itself) | None |
+| `cicd-base.yaml` | `workflow_call` | Run `ci-linter.yaml` and `ci-deep-scan.yaml` in parallel | `cicd_ref` | None |
 | `cicd-container.yaml` | `workflow_call` | Orchestrate the complete container lifecycle | architectures, `cicd_ref`, registry, promotion | Docker registry secrets |
 | `ci-linter.yaml` | `workflow_call` | Pull ephemeral lint rules and run Super Linter | `cicd_ref` | None |
 | `ci-deep-scan.yaml` | `workflow_call` | Semgrep SAST, SPDX SBOM, and Grype scan | `image_ref`, `fail_on_severity` | None for source/public images |
@@ -53,6 +68,26 @@ must be valid OCI/Docker tag strings.
 All registry workflows accept `registry_name` and `environment_name`.
 `ci-registry-clean.yaml` is Docker Hub-specific; the other registry workflows
 use Podman and can work with compatible registries.
+
+### Composite actions
+
+`base.yaml`, `cicd-container.yaml`, and `templates/workflows/container.yaml`
+share logic via composite actions in `.github/actions/`:
+
+| Action | Used by | Purpose |
+| --- | --- | --- |
+| `enforce-dev-only` | `base.yaml`, `templates/workflows/container.yaml` | Fail a `pull_request` into `main` whose head branch isn't `dev` |
+| `promote-dev-to-main` | `base.yaml`, `cicd-container.yaml` | Open or update the dev→main PR, listing every feature PR merged since `main` last moved |
+| `cut-github-release` | `base.yaml`, `cicd-container.yaml` | Create a GitHub Release, pulling notes from the merged promotion PR body |
+| `install-podman` | `ci-podman-build.yaml`, `ci-container-test.yaml`, `cd-tag-latest.yaml` | Install Podman with mirror-flakiness retries baked in |
+
+Consumer repos calling `cicd`'s reusable workflows cross-repo (`uses:
+gautada/cicd/...@main`) must reference these actions with the fully-qualified
+form (`gautada/cicd/.github/actions/X@main`) rather than `./...` - a local
+path only resolves against the repo that actually triggered the run, not the
+repo where the calling workflow file lives. `templates/workflows/container.yaml`
+is the one exception: it's downloaded standalone into consumer repos and keeps
+its `enforce-dev-only` logic inline for that reason.
 
 ## Consumer setup
 
@@ -320,8 +355,8 @@ lists them. Always inspect `git status` before committing.
 - Version tags are treated as immutable by process; registries may still allow
   overwriting unless their policy forbids it.
 
-See [AI.md](AI.md) for agent-specific operating rules and
-[docs/AUDIT.md](docs/AUDIT.md) for the original-state audit.
+See [docs/AUDIT.md](docs/AUDIT.md) for the original-state audit and
+[docs/VALIDATION.md](docs/VALIDATION.md) for validation notes.
 
 For downstream container repositories, copy
 [`CONTAINER-Agents.md`](CONTAINER-Agents.md) to the consumer repository as
