@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# shellcheck disable=SC2317
-# ^ shellcheck v0.10.0 (pinned by templates/pre-commit/.pre-commit-config.yaml)
-# misfires wholesale here: every function called only indirectly through
-# ensure_tool()'s "${installer}" pattern, combined with the trailing
-# `exit "${lint_status}"`, makes its reachability analysis mark ~150 real,
-# reachable lines as unreachable. Verified against a minimal repro isolating
-# the indirect-call + trailing-exit combination; shellcheck v0.11.0 does not
-# have this bug (only benign SC2329 "function never invoked" info-level hits
-# on the same indirectly-called functions). Revisit this disable if/when the
-# pinned rev is bumped past v0.10.0.
+# shellcheck disable=SC2317,SC2329
+# ^ Two version-specific false positives on this file's indirect-call
+# pattern (functions only ever invoked via ensure_tool()'s "${installer}"
+# variable), both disabled deliberately:
+# - SC2317 (v0.10.0, pinned by templates/pre-commit/.pre-commit-config.yaml):
+#   the indirect calls plus the trailing `exit "${lint_status}"` make its
+#   reachability analysis mark ~150 real, reachable lines as unreachable.
+# - SC2329 (added in v0.11.0, bundled by Super Linter's CI image): flags the
+#   same indirectly-invoked functions as "never invoked". Info-severity, but
+#   info still exits nonzero, so it fails CI despite being a false positive.
+# Revisit both if the pinned/bundled shellcheck versions converge.
 set -euo pipefail
 
 readonly DEFAULT_REF="main"
