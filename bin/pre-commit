@@ -1,28 +1,81 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
+# shellcheck disable=SC2317,SC2329
+# ^ Two version-specific false positives on this file's indirect-call
+# pattern (functions only ever invoked via ensure_tool()'s "${installer}"
+# variable), both disabled deliberately:
+# - SC2317 (v0.10.0, pinned by templates/pre-commit/.pre-commit-config.yaml):
+#   the indirect calls plus the trailing `exit "${lint_status}"` make its
+#   reachability analysis mark ~150 real, reachable lines as unreachable.
+# - SC2329 (added in v0.11.0, bundled by Super Linter's CI image): flags the
+#   same indirectly-invoked functions as "never invoked". Info-severity, but
+#   info still exits nonzero, so it fails CI despite being a false positive.
+# Revisit both if the pinned/bundled shellcheck versions converge.
 set -euo pipefail
 
 readonly DEFAULT_REF="main"
 readonly REPOSITORY="gautada/cicd"
+readonly HADOLINT_VERSION="v2.15.1"
+# Formatter versions below are pinned to match the linter revs in
+# templates/pre-commit/.pre-commit-config.yaml (ruff-pre-commit v0.15.16 ==
+# ruff 0.15.16; markdownlint-cli v0.47.0) so the standalone formatter binary
+# agrees with what the pre-commit hook itself lints against. yamlfmt and
+# dotenv-linter have no corresponding pinned lint hook (yamllint/dotenv-linter
+# hooks don't pin a formatter release), so those track each tool's own latest
+# stable release instead.
+readonly RUFF_VERSION="0.15.16"
+readonly MARKDOWNLINT_VERSION="v0.47.0"
+readonly YAMLFMT_VERSION="v0.21.0"
+readonly DOTENV_LINTER_VERSION="v4.0.0"
 readonly CONFIG_FILES=(
   .flake8 .hadolint.yaml .htmlhintrc .jscpd.json .markdownlint.yaml
   .pre-commit-config.yaml .shellcheckrc .sqlfluff .yamllint.yaml pyproject.toml
 )
+# Formatter binaries this script makes sure are on PATH (installed, never
+# auto-run) alongside the linters above, keyed by the linter they pair with.
+# See install_<tool>() below for how each one lands on macOS vs Ubuntu.
+# Each is read indirectly via ${!hint_var} in print_formatter_hint(), which
+# the linter can't trace, hence the per-line disable on all seven.
+# shellcheck disable=SC2034
+readonly FORMATTER_HINTS_SHELLCHECK="shfmt -w <file>          # ShellCheck has no autofix; shfmt fixes shell formatting"
+# shellcheck disable=SC2034
+readonly FORMATTER_HINTS_RUFF_CHECK="ruff check --fix <file>  # apply Ruff's autofixes"
+# shellcheck disable=SC2034
+readonly FORMATTER_HINTS_RUFF_FORMAT="ruff format <file>       # apply Ruff's formatter"
+# shellcheck disable=SC2034
+readonly FORMATTER_HINTS_MARKDOWNLINT="markdownlint --fix <file>  # apply markdownlint's autofixes"
+# shellcheck disable=SC2034
+readonly FORMATTER_HINTS_YAMLLINT="yamlfmt <file>           # yamllint has no autofix; yamlfmt fixes YAML formatting"
+# shellcheck disable=SC2034
+readonly FORMATTER_HINTS_SQLFLUFF_LINT="sqlfluff fix <file>      # apply sqlfluff's autofixes"
+# shellcheck disable=SC2034
+readonly FORMATTER_HINTS_DOTENV_LINTER="dotenv-linter fix <file> # apply dotenv-linter's autofixes"
 
 pull_only=false
 sync_project=false
+do_install=false
 workflow=''
 cicd_ref="${CICD_REF:-${DEFAULT_REF}}"
 
 usage() {
   cat <<'EOF'
 Usage: pre-commit [--pull-only] [--workflow NAME] [--sync-project] [--ref REF]
+                   [--install]
 
 Downloads the shared, gitignored lint configuration and runs pre-commit.
   --pull-only       Download configuration but do not install/run hooks.
   --workflow NAME   Install a workflow; currently supported: container.
   --sync-project    Replace the selected workflow and canonical .gitignore.
   --ref REF         Use a branch, tag, or commit (default: main).
+  --install         Attempt to install missing system tools via the detected
+                     package manager before failing. Covers every linter
+                     (pre-commit, hadolint, shellcheck, ruff, markdownlint,
+                     yamllint's formatter yamlfmt, sqlfluff, dotenv-linter)
+                     plus the formatter binary for each linter that has one
+                     (shfmt, ruff, markdownlint --fix, yamlfmt, sqlfluff fix,
+                     dotenv-linter fix). Formatters are only ever installed,
+                     never run automatically — if a hook fails, this script
+                     prints the exact command to run the matching formatter.
 EOF
 }
 
@@ -30,6 +83,7 @@ while (($#)); do
   case "$1" in
     --pull-only) pull_only=true ;;
     --sync-project) sync_project=true ;;
+    --install) do_install=true ;;
     --workflow)
       shift
       [[ $# -gt 0 ]] || { echo "ERROR: --workflow requires a value" >&2; exit 2; }
@@ -135,18 +189,345 @@ if [[ "${sync_project}" == true && "${workflow}" == container ]]; then
   install -m 0644 "${stage_dir}/gitignore" .gitignore
 fi
 
+detect_os() {
+  case "$(uname -s)" in
+    Darwin) echo macos ;;
+    Linux)
+      if [[ -r /etc/os-release ]] && grep -qiE '^ID(_LIKE)?=.*(ubuntu|debian)' /etc/os-release; then
+        echo ubuntu
+      else
+        echo linux
+      fi
+      ;;
+    *) echo unknown ;;
+  esac
+}
+
+detect_package_manager() {
+  case "$(detect_os)" in
+    macos) command -v brew >/dev/null 2>&1 && echo brew || echo none ;;
+    ubuntu) command -v apt-get >/dev/null 2>&1 && echo apt-get || echo none ;;
+    *) echo none ;;
+  esac
+}
+
+install_hint() {
+  local tool="$1" os pm
+  os="$(detect_os)"
+  pm="$(detect_package_manager)"
+  echo "ERROR: ${tool} is not installed." >&2
+  case "${tool}" in
+    hadolint)
+      echo "hadolint has no apt package; download the pinned release binary" >&2
+      echo "from https://github.com/hadolint/hadolint/releases/tag/${HADOLINT_VERSION}" >&2
+      echo "or rerun this command with --install to fetch and verify it automatically." >&2
+      return
+      ;;
+    yamlfmt)
+      echo "yamlfmt has no apt package; download the pinned release binary" >&2
+      echo "from https://github.com/google/yamlfmt/releases/tag/${YAMLFMT_VERSION}" >&2
+      echo "(brew install yamlfmt on macOS), or rerun with --install to fetch it automatically." >&2
+      return
+      ;;
+    dotenv-linter)
+      echo "dotenv-linter has no apt package; download the pinned release binary" >&2
+      echo "from https://github.com/dotenv-linter/dotenv-linter/releases/tag/${DOTENV_LINTER_VERSION}" >&2
+      echo "(brew install dotenv-linter on macOS), or rerun with --install to fetch it automatically." >&2
+      return
+      ;;
+    markdownlint)
+      echo "markdownlint is installed via npm (requires Node.js/npm on PATH)." >&2
+      echo "Install it with 'npm install --global markdownlint-cli@${MARKDOWNLINT_VERSION#v}'" >&2
+      echo "or rerun this command with --install to install Node.js (if missing) and markdownlint-cli automatically." >&2
+      return
+      ;;
+  esac
+  case "${pm}" in
+    brew) echo "Install it with 'brew install ${tool}' and rerun this command." >&2 ;;
+    apt-get) echo "Install it with 'sudo apt-get install --yes ${tool}' and rerun this command." >&2 ;;
+    *)
+      echo "No known package manager was detected for OS '${os}'." >&2
+      echo "See https://pre-commit.com or the ${tool} project's own install docs." >&2
+      ;;
+  esac
+  echo "Or rerun this command with --install to attempt installation automatically." >&2
+}
+
+install_pre_commit() {
+  local pm
+  pm="$(detect_package_manager)"
+  case "${pm}" in
+    brew) brew install pre-commit ;;
+    apt-get) sudo apt-get update && sudo apt-get install --yes pre-commit ;;
+    *) return 1 ;;
+  esac
+}
+
+install_shellcheck() {
+  local pm
+  pm="$(detect_package_manager)"
+  case "${pm}" in
+    brew) brew install shellcheck ;;
+    apt-get) sudo apt-get update && sudo apt-get install --yes shellcheck ;;
+    *) return 1 ;;
+  esac
+}
+
+install_hadolint() {
+  # hadolint has no apt package; pin the same GitHub release binary on every
+  # OS so behavior matches between macOS and Ubuntu ("samesies").
+  local os asset dest tmp_dir machine
+  os="$(detect_os)"
+  machine="$(uname -m)"
+  case "${os}" in
+    macos) asset="hadolint-macos-${machine}" ;;
+    ubuntu|linux)
+      case "${machine}" in
+        aarch64|arm64) asset="hadolint-linux-arm64" ;;
+        *) asset="hadolint-linux-x86_64" ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${tmp_dir}"' RETURN
+  curl --fail --silent --show-error --location \
+    "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${asset}" \
+    --output "${tmp_dir}/${asset}"
+  curl --fail --silent --show-error --location \
+    "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/checksums.sha256" \
+    --output "${tmp_dir}/checksums.sha256"
+  (cd "${tmp_dir}" && grep " \*${asset}\$" checksums.sha256 | sha256sum --check --status) || {
+    echo "ERROR: hadolint checksum verification failed" >&2
+    return 1
+  }
+  chmod +x "${tmp_dir}/${asset}"
+  dest="/usr/local/bin/hadolint"
+  if [[ -w "$(dirname "${dest}")" ]]; then
+    install -m 0755 "${tmp_dir}/${asset}" "${dest}"
+  else
+    sudo install -m 0755 "${tmp_dir}/${asset}" "${dest}"
+  fi
+}
+
+# Shared helper: download a single-file GitHub release asset, verify it
+# against a same-release checksums file (one "<hex>  <name>" line per asset,
+# same layout hadolint/ruff/yamlfmt all use), then install the named binary
+# out of a tarball (or the raw file itself if not archived).
+install_github_release_binary() {
+  local repo="$1" version="$2" asset="$3" checksums_url="$4" bin_name="$5" \
+    archived="$6" tmp_dir dest asset_path
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${tmp_dir}"' RETURN
+  curl --fail --silent --show-error --location \
+    "https://github.com/${repo}/releases/download/${version}/${asset}" \
+    --output "${tmp_dir}/${asset}"
+  if [[ -n "${checksums_url}" ]]; then
+    curl --fail --silent --show-error --location "${checksums_url}" \
+      --output "${tmp_dir}/checksums.txt"
+    (cd "${tmp_dir}" && grep -E "(^| )\*?${asset}\$" checksums.txt | sha256sum --check --ignore-missing --status) || {
+      echo "ERROR: ${bin_name} checksum verification failed" >&2
+      return 1
+    }
+  fi
+  if [[ "${archived}" == true ]]; then
+    tar -xzf "${tmp_dir}/${asset}" -C "${tmp_dir}"
+    asset_path="$(find "${tmp_dir}" -type f -name "${bin_name}" | head -1)"
+  else
+    asset_path="${tmp_dir}/${asset}"
+  fi
+  [[ -n "${asset_path}" && -e "${asset_path}" ]] || {
+    echo "ERROR: could not locate ${bin_name} inside downloaded asset ${asset}" >&2
+    return 1
+  }
+  chmod +x "${asset_path}"
+  dest="/usr/local/bin/${bin_name}"
+  if [[ -w "$(dirname "${dest}")" ]]; then
+    install -m 0755 "${asset_path}" "${dest}"
+  else
+    sudo install -m 0755 "${asset_path}" "${dest}"
+  fi
+}
+
+install_shfmt() {
+  local pm
+  pm="$(detect_package_manager)"
+  case "${pm}" in
+    brew) brew install shfmt ;;
+    apt-get) sudo apt-get update && sudo apt-get install --yes shfmt ;;
+    *) return 1 ;;
+  esac
+}
+
+install_sqlfluff() {
+  local pm
+  pm="$(detect_package_manager)"
+  case "${pm}" in
+    brew) brew install sqlfluff ;;
+    apt-get) sudo apt-get update && sudo apt-get install --yes sqlfluff ;;
+    *) return 1 ;;
+  esac
+}
+
+install_ruff() {
+  # Pin the same version as ruff-pre-commit's rev in .pre-commit-config.yaml
+  # so the standalone `ruff` on PATH agrees with what the hook lints/formats.
+  local os machine asset
+  os="$(detect_os)"
+  machine="$(uname -m)"
+  case "${os}" in
+    macos)
+      case "${machine}" in
+        arm64) asset="ruff-aarch64-apple-darwin.tar.gz" ;;
+        *) asset="ruff-x86_64-apple-darwin.tar.gz" ;;
+      esac
+      ;;
+    ubuntu|linux)
+      case "${machine}" in
+        aarch64|arm64) asset="ruff-aarch64-unknown-linux-gnu.tar.gz" ;;
+        *) asset="ruff-x86_64-unknown-linux-gnu.tar.gz" ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+  install_github_release_binary "astral-sh/ruff" "${RUFF_VERSION}" "${asset}" \
+    "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/${asset}.sha256" \
+    ruff true
+}
+
+install_yamlfmt() {
+  # No apt package on any OS; pin the same GitHub release binary everywhere.
+  local os machine asset
+  os="$(detect_os)"
+  machine="$(uname -m)"
+  case "${os}" in
+    macos)
+      case "${machine}" in
+        arm64) asset="yamlfmt_${YAMLFMT_VERSION#v}_Darwin_arm64.tar.gz" ;;
+        *) asset="yamlfmt_${YAMLFMT_VERSION#v}_Darwin_x86_64.tar.gz" ;;
+      esac
+      ;;
+    ubuntu|linux)
+      case "${machine}" in
+        aarch64|arm64) asset="yamlfmt_${YAMLFMT_VERSION#v}_Linux_arm64.tar.gz" ;;
+        *) asset="yamlfmt_${YAMLFMT_VERSION#v}_Linux_x86_64.tar.gz" ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+  install_github_release_binary "google/yamlfmt" "${YAMLFMT_VERSION}" "${asset}" \
+    "https://github.com/google/yamlfmt/releases/download/${YAMLFMT_VERSION}/checksums.txt" \
+    yamlfmt true
+}
+
+install_dotenv_linter() {
+  # No apt package on any OS; pin the same GitHub release binary everywhere.
+  # Note: this release has no separate checksums file, so we skip that step
+  # (install_github_release_binary handles an empty checksums_url).
+  local os machine asset
+  os="$(detect_os)"
+  machine="$(uname -m)"
+  case "${os}" in
+    macos)
+      case "${machine}" in
+        arm64) asset="dotenv-linter-darwin-arm64.tar.gz" ;;
+        *) asset="dotenv-linter-darwin-x86_64.tar.gz" ;;
+      esac
+      ;;
+    ubuntu|linux)
+      case "${machine}" in
+        aarch64|arm64) asset="dotenv-linter-linux-aarch64.tar.gz" ;;
+        *) asset="dotenv-linter-linux-x86_64.tar.gz" ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+  install_github_release_binary "dotenv-linter/dotenv-linter" "${DOTENV_LINTER_VERSION}" \
+    "${asset}" "" dotenv-linter true
+}
+
+install_nodejs() {
+  local pm
+  pm="$(detect_package_manager)"
+  case "${pm}" in
+    brew) brew install node ;;
+    apt-get) sudo apt-get update && sudo apt-get install --yes nodejs npm ;;
+    *) return 1 ;;
+  esac
+}
+
+install_markdownlint() {
+  command -v npm >/dev/null 2>&1 || install_nodejs || return 1
+  npm install --global "markdownlint-cli@${MARKDOWNLINT_VERSION#v}"
+}
+
+print_formatter_hint() {
+  local hook_id="$1" hint_var="$2" hint_value lint_output_file="$3"
+  hint_value="${!hint_var:-}"
+  grep -qE "^${hook_id}(\\.\\.\\.| )" "${lint_output_file}" 2>/dev/null || return 0
+  grep -qE "^${hook_id}(\\.\\.\\.| ).*Failed" "${lint_output_file}" 2>/dev/null || return 0
+  [[ -n "${hint_value}" ]] || return 0
+  echo "    ${hook_id} failed -> ${hint_value}"
+}
+
+ensure_tool() {
+  local tool="$1" installer="$2"
+  command -v "${tool}" >/dev/null 2>&1 && return 0
+  if [[ "${do_install}" == true ]]; then
+    echo "==> ${tool} not found; attempting install via --install"
+    if "${installer}" && command -v "${tool}" >/dev/null 2>&1; then
+      echo "    + ${tool} installed"
+      return 0
+    fi
+    echo "ERROR: automatic install of ${tool} failed." >&2
+  fi
+  install_hint "${tool}"
+  return 1
+}
+
 if [[ "${pull_only}" == true ]]; then
   echo "==> Configuration downloaded; install and lint skipped."
   exit 0
 fi
 
-command -v pre-commit >/dev/null 2>&1 || {
-  echo "ERROR: pre-commit is not installed." >&2
-  echo "Install it with 'pipx install pre-commit' and rerun this command." >&2
-  exit 1
-}
+ensure_tool pre-commit install_pre_commit || exit 1
+ensure_tool shellcheck install_shellcheck || exit 1
+ensure_tool hadolint install_hadolint || exit 1
+
+echo "==> Ensuring formatter binaries are available (installed only; never auto-run)"
+formatters_missing=false
+ensure_tool shfmt install_shfmt || formatters_missing=true
+ensure_tool ruff install_ruff || formatters_missing=true
+ensure_tool markdownlint install_markdownlint || formatters_missing=true
+ensure_tool yamlfmt install_yamlfmt || formatters_missing=true
+ensure_tool sqlfluff install_sqlfluff || formatters_missing=true
+ensure_tool dotenv-linter install_dotenv_linter || formatters_missing=true
+if [[ "${formatters_missing}" == true ]]; then
+  echo "==> One or more formatter binaries are missing (see above); continuing anyway" >&2
+  echo "    since formatters are optional fix-it tools, not required for linting." >&2
+fi
 
 echo "==> Installing the repository hook"
 pre-commit install
 echo "==> Running all configured checks"
-pre-commit run --all-files
+lint_output="$(mktemp "${TMPDIR:-/tmp}/cicd-precommit-output.XXXXXX")"
+trap 'rm -rf "${stage_dir}"; rm -f "${lint_output}"' EXIT
+set +e
+pre-commit run --all-files 2>&1 | tee "${lint_output}"
+lint_status="${PIPESTATUS[0]}"
+set -e
+
+if [[ "${lint_status}" -ne 0 ]]; then
+  echo
+  echo "==> One or more checks failed. Formatter hints for failed hooks:"
+  print_formatter_hint "ShellCheck Linter" FORMATTER_HINTS_SHELLCHECK "${lint_output}"
+  print_formatter_hint "ruff-check" FORMATTER_HINTS_RUFF_CHECK "${lint_output}"
+  print_formatter_hint "ruff-format" FORMATTER_HINTS_RUFF_FORMAT "${lint_output}"
+  print_formatter_hint "MarkdownLint" FORMATTER_HINTS_MARKDOWNLINT "${lint_output}"
+  print_formatter_hint "YAML Linter" FORMATTER_HINTS_YAMLLINT "${lint_output}"
+  print_formatter_hint "sqlfluff-lint" FORMATTER_HINTS_SQLFLUFF_LINT "${lint_output}"
+  print_formatter_hint "dotenv-linter" FORMATTER_HINTS_DOTENV_LINTER "${lint_output}"
+  echo "    (hadolint and jscpd have no autofix; fix those findings by hand)"
+fi
+
+exit "${lint_status}"
