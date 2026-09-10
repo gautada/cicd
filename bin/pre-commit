@@ -162,6 +162,14 @@ if [[ "${workflow}" == container ]]; then
   elif [[ "${sync_project}" != true ]]; then
     echo "    = .github/workflows/container.yaml exists; preserving it"
   fi
+
+  download templates/agents/REPO-AGENTS.md "${stage_dir}/REPO-AGENTS.md"
+  if [[ ! -e REPO-AGENTS.md ]]; then
+    install -m 0644 "${stage_dir}/REPO-AGENTS.md" REPO-AGENTS.md
+    echo "    + REPO-AGENTS.md (cicd@${cicd_ref})"
+  elif [[ "${sync_project}" != true ]]; then
+    echo "    = REPO-AGENTS.md exists; preserving it"
+  fi
 fi
 
 managed_file="$(git rev-parse --git-path cicd-managed-files)"
@@ -187,6 +195,7 @@ if [[ "${sync_project}" == true && "${workflow}" == container ]]; then
   download templates/gitignore/.gitignore "${stage_dir}/gitignore"
   install -m 0644 "${stage_dir}/container.yaml" .github/workflows/container.yaml
   install -m 0644 "${stage_dir}/gitignore" .gitignore
+  install -m 0644 "${stage_dir}/REPO-AGENTS.md" REPO-AGENTS.md
 fi
 
 detect_os() {
