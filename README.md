@@ -358,8 +358,21 @@ lists them. Always inspect `git status` before committing.
 See [docs/AUDIT.md](docs/AUDIT.md) for the original-state audit and
 [docs/VALIDATION.md](docs/VALIDATION.md) for validation notes.
 
-For downstream container repositories, copy
-[`CONTAINER-Agents.md`](CONTAINER-Agents.md) to the consumer repository as
-`AGENTS.md`. Agents do not automatically read instructions from a remote
-reusable-workflow repository; keeping this small file in the consumer makes
-the pre-commit, branch, CI-waiting, PR, and approval rules discoverable.
+## Agent documentation
+
+Agent instructions are split by audience so each reader has one canonical file:
+
+| Audience | File | Role |
+|---|---|---|
+| Human | `README.md` | Canonical description of the system (this file) |
+| Maintainer agent | [`REPO-AGENTS.md`](REPO-AGENTS.md) | How to maintain **this** repository |
+| Consumer agents | [`templates/agents/REPO-AGENTS.md`](templates/agents/REPO-AGENTS.md) | Synced into every consumer as its `REPO-AGENTS.md` |
+| Consumer-specific | `REPO-AGENTS.local.md` | Optional per-consumer extension, never overwritten |
+
+Agents do not automatically read instructions from a remote reusable-workflow
+repository, so the consumer guidance is propagated into each downstream repo.
+`bin/pre-commit` installs `templates/agents/REPO-AGENTS.md` into the consumer
+root as `REPO-AGENTS.md` when it is absent (the same install-if-absent behavior
+as `container.yaml`), and `--sync-project` refreshes it. Consumers keep
+repository-specific guidance in `REPO-AGENTS.local.md`, which the pipeline never
+overwrites.

@@ -1,26 +1,41 @@
-# AI agent instructions
+# Maintainer agent instructions
 
-`README.md` is the canonical description of this CI/CD system. Follow these
-rules in this repository and in consumers that reference
-`gautada/cicd/.github/workflows/`.
+This file is for an agent **maintaining the `gautada/cicd` repository itself**
+(the reusable workflows, `bin/pre-commit`, and the `templates/` that propagate
+into consumers). `README.md` is the canonical description of the CI/CD system.
 
-## Before changing a consumer
+Consumer repositories do **not** use this file. They receive
+`templates/agents/REPO-AGENTS.md`, installed into their root as
+`REPO-AGENTS.md` by `bin/pre-commit`.
 
-1. Read `.github/workflows/container.yaml` and record the pinned CI/CD ref.
-2. Work on a feature branch targeting `dev`; do not work directly on `main`.
-3. Inspect `git status` and preserve all unrelated changes.
-4. Install and run checks from the repository root:
+## Documentation map
+
+| Audience | File | Role |
+|---|---|---|
+| Human | `README.md` | Canonical description + propagation guidance |
+| Maintainer agent | `REPO-AGENTS.md` (this file) | How to maintain **this** repo |
+| Consumer agents | `templates/agents/REPO-AGENTS.md` | Synced into every consumer's `REPO-AGENTS.md` |
+| Consumer-specific | `REPO-AGENTS.local.md` (in each consumer) | Optional repo-specific extension, never overwritten |
+
+When you change consumer-facing behavior, update
+`templates/agents/REPO-AGENTS.md` so the guidance propagates outward.
+
+## Before changing this repository
+
+1. Work on a feature branch targeting `dev`; do not work directly on `main`.
+2. Inspect `git status` and preserve all unrelated changes.
+3. Install and run checks from the repository root:
 
    ```bash
    curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash
    ```
 
    Prefer downloading and reviewing the script first for high-trust work.
-5. Run relevant container tests locally when Podman is available.
+4. Run relevant container tests locally when Podman is available.
+5. When editing `bin/pre-commit` or anything under `templates/`, verify the
+   install-if-absent behavior still preserves project-owned files in consumers.
 
 The lint configuration files are generated and gitignored. Do not commit them.
-Do not run `--sync-project` unless the task explicitly authorizes replacing
-the consumer workflow and `.gitignore`.
 
 ## Required lifecycle
 
