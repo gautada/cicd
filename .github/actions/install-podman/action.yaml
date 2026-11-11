@@ -21,17 +21,21 @@ runs:
         set -euo pipefail
         # GitHub-hosted ubuntu-latest runners default to a regional Azure
         # mirror that intermittently stalls or is entirely unreachable.
-        # Replace it with the upstream archive, and also handle the DEB822
-        # .sources format used by Ubuntu 24.04+ runners.
-        #
-        # Legacy format (sources.list / apt-mirrors.txt)
-        sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' \
-          /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
-        # DEB822 format (.sources files) and legacy .list fragments
-        sudo find /etc/apt/sources.list.d \
-          \( -name '*.sources' -o -name '*.list' \) 2>/dev/null \
-          | xargs -r sudo sed -i \
-              's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g'
+        # Replace it with the upstream archive in ALL apt config sources:
+        #   - /etc/apt/sources.list (legacy)
+        #   - /etc/apt/apt-mirrors.txt (mirror list used by Ubuntu 26.04+)
+        #   - /etc/apt/sources.list.d/*.sources and *.list (DEB822 / fragments)
+
+        swap_mirror() {
+          local old="$1" new="$2"
+          sudo sed -i "s|${old}|${new}|g" \
+            /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
+          sudo find /etc/apt/sources.list.d \
+            \( -name '*.sources' -o -name '*.list' \) 2>/dev/null \
+            | xargs -r sudo sed -i "s|${old}|${new}|g"
+        }
+
+        swap_mirror 'azure\.archive\.ubuntu\.com' 'archive.ubuntu.com'
     - name: Install podman
       id: install
       shell: bash
@@ -41,18 +45,21 @@ runs:
         set -euo pipefail
         apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30)
 
-        # --- apt-get update with mirror fallback ---
-        # Try archive.ubuntu.com first (set above). If it is also
-        # unreachable (exit 124 = timeout, 100 = apt error), swap to
-        # the Canonical country-neutral mirror and retry once.
-        if ! sudo timeout 120 apt-get "${apt_opts[@]}" update 2>&1; then
-          echo "::warning::Primary mirror failed; falling back to us.archive.ubuntu.com"
-          sudo sed -i 's|archive\.ubuntu\.com|us.archive.ubuntu.com|g' \
-            /etc/apt/sources.list 2>/dev/null || true
+        swap_mirror() {
+          local old="$1" new="$2"
+          sudo sed -i "s|${old}|${new}|g" \
+            /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
           sudo find /etc/apt/sources.list.d \
             \( -name '*.sources' -o -name '*.list' \) 2>/dev/null \
-            | xargs -r sudo sed -i \
-                's|archive\.ubuntu\.com|us.archive.ubuntu.com|g'
+            | xargs -r sudo sed -i "s|${old}|${new}|g"
+        }
+
+        # --- apt-get update with mirror fallback ---
+        # Try archive.ubuntu.com first. If unreachable (exit 124 = timeout,
+        # or apt error), swap ALL apt sources to us.archive.ubuntu.com and retry.
+        if ! sudo timeout 120 apt-get "${apt_opts[@]}" update 2>&1; then
+          echo "::warning::Primary mirror (archive.ubuntu.com) failed; falling back to us.archive.ubuntu.com"
+          swap_mirror 'archive\.ubuntu\.com' 'us.archive.ubuntu.com'
           sudo timeout 120 apt-get "${apt_opts[@]}" update
         fi
 
