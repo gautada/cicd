@@ -1,0 +1,48 @@
+---
+name: Delete merged branch
+description: >-
+  Delete the head branch of a merged pull request, skipping protected
+  long-lived branches (dev, main).  Designed to run on the
+  pull_request closed event in consumer repos.
+inputs:
+  protected_branches:
+    description: >-
+      Comma-separated list of branch names that must never be deleted.
+    required: false
+    default: dev,main
+runs:
+  using: composite
+  steps:
+    - name: Delete head branch if merged and not protected
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        PR_MERGED: ${{ github.event.pull_request.merged }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        PROTECTED: ${{ inputs.protected_branches }}
+      run: |
+        set -euo pipefail
+
+        if [[ "${PR_MERGED}" != "true" ]]; then
+          echo "PR was closed without merging — nothing to do."
+          exit 0
+        fi
+
+        # Build an associative array of protected branch names
+        declare -A keep
+        IFS=',' read -ra names <<< "${PROTECTED}"
+        for name in "${names[@]}"; do
+          name="${name// /}"              # trim whitespace
+          [[ -n "${name}" ]] && keep["${name}"]=1
+        done
+
+        if [[ -n "${keep[${HEAD_REF}]+_}" ]]; then
+          echo "Branch '${HEAD_REF}' is protected — skipping deletion."
+          exit 0
+        fi
+
+        echo "Deleting branch '${HEAD_REF}'..."
+        gh api -X DELETE "repos/${GH_REPO}/git/refs/heads/${HEAD_REF}" \
+          && echo "Done." \
+          || echo "Branch may have already been deleted."
