@@ -80,6 +80,8 @@ share logic via composite actions in `.github/actions/`:
 | `promote-dev-to-main` | `base.yaml`, `cicd-container.yaml` | Open or update the dev→main PR, listing every feature PR merged since `main` last moved |
 | `cut-github-release` | `base.yaml`, `cicd-container.yaml` | Create a GitHub Release, pulling notes from the merged promotion PR body |
 | `install-podman` | `ci-podman-build.yaml`, `ci-container-test.yaml`, `cd-tag-latest.yaml` | Install Podman with mirror-flakiness retries baked in |
+| `delete-merged-branch` | `templates/workflows/container.yaml` | Delete the head branch after PR merge, protecting `dev` and `main` |
+| `validate-consumer` | `cicd-base.yaml` | Check that consumer repos have required CI/CD wiring (cleanup workflow, container-test, container-version) |
 
 Consumer repos calling `cicd`'s reusable workflows cross-repo (`uses:
 gautada/cicd/...@main`) must reference these actions with the fully-qualified
