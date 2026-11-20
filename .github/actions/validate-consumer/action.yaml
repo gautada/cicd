@@ -1,0 +1,123 @@
+---
+name: Validate consumer repo setup
+description: >-
+  Check that a consumer repository has the required CI/CD wiring files
+  and configuration.  Runs during the base quality gate so missing
+  setup is caught before builds start.
+inputs:
+  require_cleanup_workflow:
+    description: >-
+      Require a workflow that handles branch cleanup on PR close.
+    required: false
+    default: "true"
+  require_container_test:
+    description: >-
+      Require /usr/bin/container-test in the Containerfile.
+    required: false
+    default: "true"
+  require_container_version:
+    description: >-
+      Require /usr/bin/container-version in the Containerfile.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Validate consumer CI/CD wiring
+      shell: bash
+      env:
+        REQUIRE_CLEANUP: ${{ inputs.require_cleanup_workflow }}
+        REQUIRE_CONTAINER_TEST: ${{ inputs.require_container_test }}
+        REQUIRE_CONTAINER_VERSION: ${{ inputs.require_container_version }}
+      run: |
+        set -euo pipefail
+        errors=0
+
+        echo "::group::Consumer CI/CD validation"
+
+        # --- Required workflow: container.yaml ---
+        if [[ -f .github/workflows/container.yaml ]]; then
+          echo "✓ .github/workflows/container.yaml exists"
+
+          # Must call cicd-base and cicd-container
+          if grep -q 'gautada/cicd/.github/workflows/cicd-base.yaml' \
+               .github/workflows/container.yaml; then
+            echo "✓ container.yaml references cicd-base"
+          else
+            echo "::error file=.github/workflows/container.yaml::Missing reference to gautada/cicd cicd-base.yaml"
+            errors=$((errors + 1))
+          fi
+
+          if grep -q 'gautada/cicd/.github/workflows/cicd-container.yaml' \
+               .github/workflows/container.yaml; then
+            echo "✓ container.yaml references cicd-container"
+          else
+            echo "::error file=.github/workflows/container.yaml::Missing reference to gautada/cicd cicd-container.yaml"
+            errors=$((errors + 1))
+          fi
+        else
+          echo "::error::Missing .github/workflows/container.yaml — run the cicd installer or copy from gautada/cicd/templates/workflows/"
+          errors=$((errors + 1))
+        fi
+
+        # --- Required workflow: cleanup.yaml (branch cleanup on PR close) ---
+        if [[ "${REQUIRE_CLEANUP}" == "true" ]]; then
+          cleanup_found=false
+          for wf in .github/workflows/*.yaml .github/workflows/*.yml; do
+            [[ -f "${wf}" ]] || continue
+            if grep -q 'pull_request:' "${wf}" && \
+               grep -q 'closed' "${wf}" && \
+               grep -q 'delete-merged-branch' "${wf}"; then
+              cleanup_found=true
+              echo "✓ Branch cleanup workflow found: ${wf}"
+              break
+            fi
+          done
+          if [[ "${cleanup_found}" == "false" ]]; then
+            echo "::error::Missing branch cleanup workflow — add a workflow that uses gautada/cicd/.github/actions/delete-merged-branch@main on pull_request closed events"
+            errors=$((errors + 1))
+          fi
+        fi
+
+        # --- Containerfile checks ---
+        if [[ -f Containerfile ]]; then
+          echo "✓ Containerfile exists"
+
+          if [[ "${REQUIRE_CONTAINER_TEST}" == "true" ]]; then
+            if grep -q '/usr/bin/container-test' Containerfile; then
+              echo "✓ Containerfile installs /usr/bin/container-test"
+            else
+              echo "::error file=Containerfile::Missing /usr/bin/container-test — required for CI container testing"
+              errors=$((errors + 1))
+            fi
+          fi
+
+          if [[ "${REQUIRE_CONTAINER_VERSION}" == "true" ]]; then
+            if grep -q '/usr/bin/container-version' Containerfile; then
+              echo "✓ Containerfile installs /usr/bin/container-version"
+            else
+              echo "::error file=Containerfile::Missing /usr/bin/container-version — required for release tagging"
+              errors=$((errors + 1))
+            fi
+          fi
+        else
+          echo "::warning::No Containerfile found — skipping container-specific checks"
+        fi
+
+        # --- AGENTS.md ---
+        if [[ -f AGENTS.md ]]; then
+          echo "✓ AGENTS.md exists"
+        else
+          echo "::warning::Missing AGENTS.md — copy CONTAINER-Agents.md from gautada/cicd for agent instructions"
+        fi
+
+        echo "::endgroup::"
+
+        if [[ "${errors}" -gt 0 ]]; then
+          echo ""
+          echo "::error::Consumer validation failed with ${errors} error(s). See annotations above."
+          exit 1
+        fi
+
+        echo ""
+        echo "Consumer CI/CD validation: PASS"

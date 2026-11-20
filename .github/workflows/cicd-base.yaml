@@ -14,6 +14,19 @@ permissions:
   security-events: write
 
 jobs:
+  validate-consumer:
+    name: Validate consumer CI/CD wiring
+    if: github.repository != 'gautada/cicd'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - uses: gautada/cicd/.github/actions/validate-consumer@main  # nosemgrep
+        with:
+          require_cleanup_workflow: "true"
+          require_container_test: "true"
+          require_container_version: "true"
+
   lint:
     uses: ./.github/workflows/ci-linter.yaml
     with:

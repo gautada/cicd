@@ -4,6 +4,7 @@ name: Container CI/CD harness
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches: [dev, main]
   push:
 
@@ -19,7 +20,10 @@ concurrency:
 jobs:
   enforce-dev-only:
     name: Only accept promotions from dev
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      github.base_ref == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -33,13 +37,23 @@ jobs:
           fi
 
   base:
+    if: github.event.action != 'closed'
     uses: gautada/cicd/.github/workflows/cicd-base.yaml@main
     with:
       cicd_ref: main
 
   container:
+    if: github.event.action != 'closed'
     needs: base
     uses: gautada/cicd/.github/workflows/cicd-container.yaml@main
     secrets:
       DOCKERIO_REGISTRY: ${{ secrets.DOCKERIO_REGISTRY }}
       DOCKERIO_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
+
+  cleanup:
+    name: Delete merged branch
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: gautada/cicd/.github/actions/delete-merged-branch@main
