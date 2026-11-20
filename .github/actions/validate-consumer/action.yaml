@@ -1,15 +1,16 @@
 ---
 name: Validate consumer repo setup
 description: >-
-  Check that a consumer repository has the required CI/CD wiring files
-  and configuration.  Runs during the base quality gate so missing
-  setup is caught before builds start.
+  Check that a consumer repository is fully up to date with the
+  canonical cicd template.  Fetches the template from gautada/cicd
+  and diffs it against the consumer's actual workflow.  Any drift
+  fails the build with a clear diff showing what needs to change.
 inputs:
-  require_cleanup_workflow:
+  cicd_ref:
     description: >-
-      Require a workflow that handles branch cleanup on PR close.
+      Revision of gautada/cicd to compare against (default: main).
     required: false
-    default: "true"
+    default: main
   require_container_test:
     description: >-
       Require /usr/bin/container-test in the Containerfile.
@@ -23,10 +24,21 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Fetch canonical cicd template
+      shell: bash
+      env:
+        CICD_REF: ${{ inputs.cicd_ref }}
+      run: |
+        set -euo pipefail
+        mkdir -p /tmp/cicd-template
+        curl -sSfL \
+          "https://raw.githubusercontent.com/gautada/cicd/${CICD_REF}/templates/workflows/container.yaml" \
+          -o /tmp/cicd-template/container.yaml
+        echo "✓ Fetched canonical container.yaml from gautada/cicd@${CICD_REF}"
+
     - name: Validate consumer CI/CD wiring
       shell: bash
       env:
-        REQUIRE_CLEANUP: ${{ inputs.require_cleanup_workflow }}
         REQUIRE_CONTAINER_TEST: ${{ inputs.require_container_test }}
         REQUIRE_CONTAINER_VERSION: ${{ inputs.require_container_version }}
       run: |
@@ -35,46 +47,19 @@ runs:
 
         echo "::group::Consumer CI/CD validation"
 
-        # --- Required workflow: container.yaml ---
-        if [[ -f .github/workflows/container.yaml ]]; then
-          echo "✓ .github/workflows/container.yaml exists"
-
-          # Must call cicd-base and cicd-container
-          if grep -q 'gautada/cicd/.github/workflows/cicd-base.yaml' \
-               .github/workflows/container.yaml; then
-            echo "✓ container.yaml references cicd-base"
-          else
-            echo "::error file=.github/workflows/container.yaml::Missing reference to gautada/cicd cicd-base.yaml"
-            errors=$((errors + 1))
-          fi
-
-          if grep -q 'gautada/cicd/.github/workflows/cicd-container.yaml' \
-               .github/workflows/container.yaml; then
-            echo "✓ container.yaml references cicd-container"
-          else
-            echo "::error file=.github/workflows/container.yaml::Missing reference to gautada/cicd cicd-container.yaml"
-            errors=$((errors + 1))
-          fi
-        else
-          echo "::error::Missing .github/workflows/container.yaml — run the cicd installer or copy from gautada/cicd/templates/workflows/"
+        # --- container.yaml must match the canonical template ---
+        if [[ ! -f .github/workflows/container.yaml ]]; then
+          echo "::error::Missing .github/workflows/container.yaml — copy from gautada/cicd/templates/workflows/container.yaml or run the installer with --workflow container --sync-project"
           errors=$((errors + 1))
-        fi
-
-        # --- Required workflow: cleanup.yaml (branch cleanup on PR close) ---
-        if [[ "${REQUIRE_CLEANUP}" == "true" ]]; then
-          cleanup_found=false
-          for wf in .github/workflows/*.yaml .github/workflows/*.yml; do
-            [[ -f "${wf}" ]] || continue
-            if grep -q 'pull_request:' "${wf}" && \
-               grep -q 'closed' "${wf}" && \
-               grep -q 'delete-merged-branch' "${wf}"; then
-              cleanup_found=true
-              echo "✓ Branch cleanup workflow found: ${wf}"
-              break
-            fi
-          done
-          if [[ "${cleanup_found}" == "false" ]]; then
-            echo "::error::Missing branch cleanup workflow — add a workflow that uses gautada/cicd/.github/actions/delete-merged-branch@main on pull_request closed events"
+        else
+          if diff -u /tmp/cicd-template/container.yaml .github/workflows/container.yaml > /tmp/cicd-template/container.diff 2>&1; then
+            echo "✓ .github/workflows/container.yaml matches canonical template"
+          else
+            echo "::error file=.github/workflows/container.yaml::container.yaml is out of date with the canonical cicd template. Run the installer with --workflow container --sync-project or manually apply the diff below."
+            echo ""
+            echo "--- Expected (gautada/cicd template) vs Actual (this repo) ---"
+            cat /tmp/cicd-template/container.diff
+            echo ""
             errors=$((errors + 1))
           fi
         fi
@@ -85,7 +70,7 @@ runs:
 
           if [[ "${REQUIRE_CONTAINER_TEST}" == "true" ]]; then
             if grep -q '/usr/bin/container-test' Containerfile; then
-              echo "✓ Containerfile installs /usr/bin/container-test"
+              echo "✓ Containerfile references /usr/bin/container-test"
             else
               echo "::error file=Containerfile::Missing /usr/bin/container-test — required for CI container testing"
               errors=$((errors + 1))
@@ -94,7 +79,7 @@ runs:
 
           if [[ "${REQUIRE_CONTAINER_VERSION}" == "true" ]]; then
             if grep -q '/usr/bin/container-version' Containerfile; then
-              echo "✓ Containerfile installs /usr/bin/container-version"
+              echo "✓ Containerfile references /usr/bin/container-version"
             else
               echo "::error file=Containerfile::Missing /usr/bin/container-version — required for release tagging"
               errors=$((errors + 1))
@@ -115,7 +100,10 @@ runs:
 
         if [[ "${errors}" -gt 0 ]]; then
           echo ""
-          echo "::error::Consumer validation failed with ${errors} error(s). See annotations above."
+          echo "::error::Consumer validation failed with ${errors} error(s). See annotations and diff output above."
+          echo ""
+          echo "To fix: run from your repo root:"
+          echo "  curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --workflow container --sync-project"
           exit 1
         fi
 
