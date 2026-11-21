@@ -38,14 +38,14 @@ jobs:
 
   base:
     if: github.event.action != 'closed'
-    uses: gautada/cicd/.github/workflows/cicd-base.yaml@main
+    uses: gautada/cicd/.github/workflows/cicd-base.yaml@dffff61be08180962292ce0a003326ebee487754  # main
     with:
       cicd_ref: main
 
   container:
     if: github.event.action != 'closed'
     needs: base
-    uses: gautada/cicd/.github/workflows/cicd-container.yaml@main
+    uses: gautada/cicd/.github/workflows/cicd-container.yaml@dffff61be08180962292ce0a003326ebee487754  # main
     secrets:
       DOCKERIO_REGISTRY: ${{ secrets.DOCKERIO_REGISTRY }}
       DOCKERIO_TOKEN: ${{ secrets.DOCKERIO_TOKEN }}
@@ -56,4 +56,4 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: gautada/cicd/.github/actions/delete-merged-branch@main
+      - uses: gautada/cicd/.github/actions/delete-merged-branch@dffff61be08180962292ce0a003326ebee487754  # main
