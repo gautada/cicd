@@ -49,13 +49,26 @@ runs:
 
         # --- container.yaml must match the canonical template ---
         if [[ ! -f .github/workflows/container.yaml ]]; then
-          echo "::error::Missing .github/workflows/container.yaml — copy from gautada/cicd/templates/workflows/container.yaml or run the installer with --workflow container --sync-project"
+          msg="Missing .github/workflows/container.yaml"
+          msg="${msg} — copy from gautada/cicd template"
+          msg="${msg} or run the installer with"
+          msg="${msg} --workflow container --sync-project"
+          echo "::error::${msg}"
           errors=$((errors + 1))
         else
-          if diff -u /tmp/cicd-template/container.yaml .github/workflows/container.yaml > /tmp/cicd-template/container.diff 2>&1; then
+          diff_out=/tmp/cicd-template/container.diff
+          if diff -u /tmp/cicd-template/container.yaml \
+            .github/workflows/container.yaml \
+            > "${diff_out}" 2>&1; then
             echo "✓ .github/workflows/container.yaml matches canonical template"
           else
-            echo "::error file=.github/workflows/container.yaml::container.yaml is out of date with the canonical cicd template. Run the installer with --workflow container --sync-project or manually apply the diff below."
+            msg="container.yaml is out of date with the"
+            msg="${msg} canonical cicd template. Run the"
+            msg="${msg} installer with --workflow container"
+            msg="${msg} --sync-project or manually apply"
+            msg="${msg} the diff below."
+            wf=".github/workflows/container.yaml"
+            echo "::error file=${wf}::${msg}"
             echo ""
             echo "--- Expected (gautada/cicd template) vs Actual (this repo) ---"
             cat /tmp/cicd-template/container.diff
@@ -103,7 +116,11 @@ runs:
           echo "::error::Consumer validation failed with ${errors} error(s). See annotations and diff output above."
           echo ""
           echo "To fix: run from your repo root:"
-          echo "  curl -sSfL https://raw.githubusercontent.com/gautada/cicd/main/bin/pre-commit | bash -s -- --workflow container --sync-project"
+          url="https://raw.githubusercontent.com"
+          url="${url}/gautada/cicd/main/bin/pre-commit"
+          echo "  curl -sSfL ${url}" \
+            "| bash -s -- --workflow container" \
+            "--sync-project"
           exit 1
         fi
 
